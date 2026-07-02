@@ -2,3 +2,10 @@ stock_code,stock_name,market,exchange,pool_name,source,is_active,is_blacklisted,
 000001,平安银行,A股,SZ,core_500,example,true,false,示例股票
 600519,贵州茅台,A股,SH,core_500,example,true,false,示例股票
 300750,宁德时代,A股,SZ,core_500,example,true,false,示例股票
+600036,招商银行,A股,SH,core_500,example,true,false,示例股票
+000858,五粮液,A股,SZ,core_500,example,true,false,示例股票
+601318,中国平安,A股,SH,core_500,example,true,false,示例股票
+000333,美的集团,A股,SZ,core_500,example,true,false,示例股票
+600276,恒瑞医药,A股,SH,core_500,example,true,false,示例股票
+002415,海康威视,A股,SZ,core_500,example,true,false,示例股票
+601012,隆基绿能,A股,SH,core_500,example,true,false,示例股票

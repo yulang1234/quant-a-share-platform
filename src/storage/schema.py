@@ -8,6 +8,8 @@ All CREATE TABLE statements are centralised here so that
 # ── Ordered list of DDL statements ──────────────────────────────────────
 CREATE_TABLE_SQL: list[str] = [
     # 1. Stock pool — the curated universe
+    # NOTE: composite PK (stock_code, pool_name) — "000001" can belong to
+    #       different pools, and the same pool never contains duplicates.
     """
     CREATE TABLE IF NOT EXISTS stock_pool (
         stock_code      VARCHAR(6)   NOT NULL,
@@ -21,7 +23,7 @@ CREATE_TABLE_SQL: list[str] = [
         note            VARCHAR(256),
         created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (stock_code)
+        PRIMARY KEY (stock_code, pool_name)
     );
     """,
     # 2. Stock basic info (listing status, industry, etc.)
@@ -230,3 +232,5 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
 ]
+
+

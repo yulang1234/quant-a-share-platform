@@ -53,11 +53,63 @@ def init_database(db_path: Path | None = None) -> None:
     """Create all tables defined in ``schema.py`` if they do not exist.
 
     Safe to call repeatedly (``IF NOT EXISTS`` is used throughout).
+    Will NOT destroy existing data.
     """
     con = get_connection(db_path)
-    for i, ddl in enumerate(CREATE_TABLE_SQL, 1):
+
+    # Auto-migrate V0.1 -> V0.2 if old stock_pool PK is detected
+    _migrate_stock_pool_if_needed(con)
+
+    for ddl in CREATE_TABLE_SQL:
         con.execute(ddl)
     logger.info("Database initialised (%d tables).", len(CREATE_TABLE_SQL))
+
+
+def _migrate_stock_pool_if_needed(con: duckdb.DuckDBPyConnection) -> None:
+    """Check whether ``stock_pool`` still has the V0.1 single-column PK
+    ``(stock_code)`` and, if so, drop and recreate it with the V0.2
+    composite PK ``(stock_code, pool_name)``.
+
+    The migration is **idempotent** — it only runs once because the new
+    schema is then persisted in the database file.
+    """
+    if not _table_exists(con, "stock_pool"):
+        return  # fresh install, nothing to migrate
+
+    # Probe: the old PK (stock_code) rejects a second row with the same
+    # stock_code even if pool_name differs.  The new composite PK accepts it.
+    probe_code = "__v0_2_probe__"
+    try:
+        con.execute(
+            "INSERT INTO stock_pool (stock_code, stock_name, pool_name) "
+            "VALUES (?, ?, ?)",
+            [probe_code, "probe1", "pool_a"],
+        )
+        con.execute(
+            "INSERT INTO stock_pool (stock_code, stock_name, pool_name) "
+            "VALUES (?, ?, ?)",
+            [probe_code, "probe2", "pool_b"],
+        )
+    except Exception:
+        # Second insert failed -> old single-column PK detected
+        logger.warning(
+            "Detected V0.1 stock_pool schema (single-column PK). "
+            "Dropping and recreating table with composite PK. "
+            "Existing data will be lost."
+        )
+        con.execute("DROP TABLE IF EXISTS stock_pool")
+    finally:
+        con.execute("DELETE FROM stock_pool WHERE stock_code = ?", [probe_code])
+
+
+def _table_exists(con: duckdb.DuckDBPyConnection, name: str) -> bool:
+    """Return True if a table named ``name`` exists in the main schema."""
+    r = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'main' AND table_name = ?",
+        [name],
+    ).fetchone()
+    return r is not None and r[0] > 0
 
 
 def execute_sql(sql: str, params: list[Any] | None = None) -> duckdb.DuckDBPyConnection:
