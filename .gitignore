@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Env
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# DuckDB local database
+data/duckdb/*.duckdb
+data/duckdb/*.wal
+
+# Parquet data
+data/parquet/ods/*
+data/parquet/dwd/daily_raw/*
+data/parquet/dwd/daily_qfq/*
+data/parquet/ads/factors/*
+data/parquet/ads/scores/*
+data/parquet/ads/backtest/*
+data/parquet/*.parquet
+data/parquet/**/*.parquet
+
+# Keep empty folders
+!data/parquet/ods/.gitkeep
+!data/parquet/dwd/.gitkeep
+!data/parquet/dwd/daily_raw/.gitkeep
+!data/parquet/dwd/daily_qfq/.gitkeep
+!data/parquet/ads/.gitkeep
+!data/parquet/ads/factors/.gitkeep
+!data/parquet/ads/scores/.gitkeep
+!data/parquet/ads/backtest/.gitkeep
+!data/duckdb/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db

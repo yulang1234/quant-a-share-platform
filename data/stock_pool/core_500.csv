@@ -1,0 +1,4 @@
+stock_code,stock_name,market,exchange,pool_name,source,is_active,is_blacklisted,note
+000001,平安银行,A股,SZ,core_500,example,true,false,示例股票
+600519,贵州茅台,A股,SH,core_500,example,true,false,示例股票
+300750,宁德时代,A股,SZ,core_500,example,true,false,示例股票
