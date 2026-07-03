@@ -19,6 +19,9 @@ from src.storage.schema import CREATE_TABLE_SQL
 
 logger = logging.getLogger(__name__)
 
+# Tables that store daily market data (validated against injection)
+_DAILY_TABLES = frozenset({"stock_daily_raw", "stock_daily_qfq"})
+
 # ── Module-level singleton (lazy) ───────────────────────────────────
 _connection: duckdb.DuckDBPyConnection | None = None
 
@@ -208,8 +211,8 @@ def upsert_daily_data(table_name: str, df: pd.DataFrame) -> int:
 
     # Match DataFrame columns to the target table's schema
     table_cols = con.execute(
-        f"SELECT column_name FROM information_schema.columns "
-        f"WHERE table_schema = 'main' AND table_name = ?",
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?",
         [table_name],
     ).fetchdf()["column_name"].tolist()
     insert_cols = [c for c in df.columns if c in table_cols]
@@ -243,3 +246,80 @@ def upsert_daily_data(table_name: str, df: pd.DataFrame) -> int:
         inserted, table_name,
     )
     return inserted
+
+
+def get_max_trade_date(table_name: str, stock_code: str) -> str | None:
+    """Return the latest ``trade_date`` for *stock_code* in *table_name*.
+
+    Parameters
+    ----------
+    table_name : str
+        ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    stock_code : str
+        6-digit stock code.
+
+    Returns
+    -------
+    str or None
+        ``"YYYY-MM-DD"`` string, or ``None`` if no data exists.
+
+    Raises
+    ------
+    ValueError
+        If *table_name* is not a recognised daily-data table.
+    """
+    if table_name not in _DAILY_TABLES:
+        raise ValueError(
+            f"table_name must be one of {sorted(_DAILY_TABLES)}, "
+            f"got '{table_name}'"
+        )
+    con = get_connection()
+    result = con.execute(
+        f"SELECT MAX(trade_date) FROM {table_name} WHERE stock_code = ?",
+        [stock_code],
+    ).fetchone()
+    val = result[0] if result else None
+    if val is None:
+        return None
+    # DuckDB returns date objects; convert to string
+    if hasattr(val, "strftime"):
+        return val.strftime("%Y-%m-%d")
+    return str(val)[:10]
+
+
+def count_daily_records(table_name: str, stock_code: str | None = None) -> int:
+    """Count rows in a daily-data table, optionally filtered by stock.
+
+    Parameters
+    ----------
+    table_name : str
+        ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    stock_code : str, optional
+        6-digit stock code.
+
+    Returns
+    -------
+    int
+        Row count.
+
+    Raises
+    ------
+    ValueError
+        If *table_name* is not a recognised daily-data table.
+    """
+    if table_name not in _DAILY_TABLES:
+        raise ValueError(
+            f"table_name must be one of {sorted(_DAILY_TABLES)}, "
+            f"got '{table_name}'"
+        )
+    con = get_connection()
+    if stock_code:
+        result = con.execute(
+            f"SELECT COUNT(*) FROM {table_name} WHERE stock_code = ?",
+            [stock_code],
+        ).fetchone()
+    else:
+        result = con.execute(
+            f"SELECT COUNT(*) FROM {table_name}"
+        ).fetchone()
+    return int(result[0]) if result else 0

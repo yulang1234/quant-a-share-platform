@@ -24,13 +24,11 @@ import logging
 import time
 from datetime import datetime, timedelta
 
-import pandas as pd
-
 from config.settings import ensure_dirs
 from src.data_source.akshare_client import AkShareClient
 from src.data_update.update_log import get_update_summary, write_update_log
 from src.storage.duckdb_repo import init_database, upsert_daily_data
-from src.storage.parquet_repo import read_daily_parquet, save_daily_parquet
+from src.storage.parquet_repo import save_daily_parquet
 from src.universe.stock_pool import get_active_stock_pool
 
 logger = logging.getLogger(__name__)

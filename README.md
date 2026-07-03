@@ -6,9 +6,28 @@
 
 这是一个面向 A 股的个人量化研究平台，第一阶段以 500 支核心股票为研究对象，后续会逐步支持历史数据初始化、每日增量更新、数据质量检查、因子计算、评分、回测、Qlib 研究和 AI 分析报告。
 
-## 当前版本
+## 当前版本状态
 
-`V0.3`：20 年历史数据初始化
+- V0.1 项目骨架：完成
+- V0.2 股票池管理：完成
+- V0.3 20 年历史数据初始化：完成
+- V0.4 每日增量更新：完成，可验收
+
+## V0.4 已完成内容
+
+- 每日增量更新模块：从 stock_pool 读取股票列表，自动判断缺失数据区间
+- 自动计算增量 start_date：基于数据库已有最大 trade_date + 1 天
+- 支持 adj=raw/qfq/all 三种模式
+- 支持 --limit 小批量测试
+- 支持 --force + --start-date 重刷指定区间
+- 无历史数据时自动 skipped，提示需先跑 V0.3
+- 已是最新数据时自动 skipped（already up to date）
+- 失败不中断整体任务
+- 重复执行不产生重复数据（upsert 去重）
+- CLI 输出 ASCII safe，Windows GBK 安全
+- Streamlit 增量更新展示页面
+- DuckDB 新增 get_max_trade_date / count_daily_records
+- 测试：pytest -v 263 passed
 
 ## V0.3 已完成内容
 
@@ -21,19 +40,21 @@
 - 失败任务查询（自动排除后续已成功的组合）与重试
 - Streamlit 历史数据初始化状态页面
 - **真实链路已验证**：平安银行(000001) 20 年日线 raw + qfq 各 4,736 行成功入库
-- 单元测试覆盖：215 个测试，含编码完整性、CLI 输出安全、CSV 结构校验
+- 单元测试覆盖：263 个测试，含编码完整性、CLI 输出安全、CSV 结构校验、每日增量更新逻辑
 
-## V0.3 不做什么
+## V0.4 不做什么
 
-- 不做每日增量更新（V0.4）
 - 不做数据质量检查（V0.5）
+- 不做数据修复重跑（V0.6）
 - 不做因子计算（V0.7）
 - 不做评分（V0.8）
 - 不做策略与回测（V1.0）
-- 不接入 Qlib / Alpha360
-- 不接入 DeepSeek / GPT
+- 不接 Qlib / Alpha360
+- 不接 DeepSeek / GPT
 - 不做自动交易
 - 不接券商 API
+- 不做复杂交易日历系统
+- 不做自动定时任务
 
 ## V0.2 已完成内容
 
@@ -100,6 +121,28 @@ python -m src.data_update.historical_loader --pool core_500 --limit 10 --sleep 1
 python -m src.data_update.retry_failed --limit 10
 ```
 
+### 每日增量更新
+
+```bash
+# 小批量测试 (5 支股票, raw + qfq)
+python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj all
+
+# 只更新不复权数据
+python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj raw
+
+# 只更新前复权数据
+python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj qfq
+
+# Force 重刷指定日期区间
+python -m src.data_update.daily_incremental --pool core_500 --limit 3 --start-date 20260701 --end-date 20260703 --force
+```
+
+注意：
+- V0.4 依赖 V0.3 已完成历史数据初始化
+- 如果某只股票没有历史数据，默认会 skipped
+- 重复执行不会重复写入
+- DuckDB / Parquet 只保存在本地，不提交 GitHub
+
 ### 查看数据状态
 
 ```bash
@@ -111,6 +154,8 @@ streamlit run ui/streamlit_app.py
 ```bash
 pytest -v
 ```
+
+当前测试结果：263 passed。
 
 ## V0.3 验收前置条件
 
@@ -229,11 +274,11 @@ quant-a-share-platform/
 
 ## 后续版本路线
 
-- V0.1 项目骨架
-- V0.2 股票池管理
-- V0.3 [OK] 20 年历史数据初始化
-- V0.4 每日增量更新
-- V0.5 数据质量检查
+- V0.1 项目骨架 [完成]
+- V0.2 股票池管理 [完成]
+- V0.3 20 年历史数据初始化 [完成]
+- V0.4 每日增量更新 [完成，可验收]
+- V0.5 数据质量检查 [下一步]
 - V0.6 数据修复与重跑
 - V0.7 基础因子计算
 - V0.8 因子标准化与排名

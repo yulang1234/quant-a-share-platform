@@ -1,10 +1,15 @@
 """
 Streamlit UI for the Quant A-Share Research Platform.
-
-Run with::
-
-    streamlit run ui/streamlit_app.py
 """
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_proj_root = Path(__file__).resolve().parent.parent
+if str(_proj_root) not in sys.path:
+    sys.path.insert(0, str(_proj_root))
 
 import pandas as pd
 import streamlit as st
@@ -17,387 +22,788 @@ from src.universe.stock_pool import (
     deactivate_stock,
     delete_stock_from_pool,
     get_stock_pool,
-    infer_exchange,
     load_stock_pool_from_csv,
     remove_blacklist,
     save_stock_pool_to_db,
     validate_stock_code,
 )
-from src.universe.filters import filter_st_stocks
+from src.universe.filters import apply_basic_filters, filter_st_stocks
 
-# ── Column display names ─────────────────────────────────────────────
-_COLUMN_LABELS: dict[str, str] = {
+# ======================================================================
+#  CSS — Dark professional theme
+# ======================================================================
+
+_CSS = """
+<style>
+/* ── Base ── */
+.stApp, .stApp > header { background-color: #0b1020 !important; }
+.block-container { max-width: 1280px; padding-top: 4.8rem !important; }
+
+/* ── Typography ── */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #e8edf5;
+}
+
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] { display: none; }
+
+/* ── Metric / KPI cards ── */
+div[data-testid="metric-container"] {
+    background: #141d30 !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 10px !important;
+    padding: 1.05rem 1.25rem !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+    transition: border-color 0.15s ease;
+}
+div[data-testid="metric-container"]:hover {
+    border-color: rgba(255,255,255,0.14) !important;
+}
+div[data-testid="metric-container"] > div:first-child {
+    font-size: 0.68rem !important;
+    color: #7a88a6 !important;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+div[data-testid="metric-container"] > div:nth-child(2) {
+    font-size: 1.6rem !important;
+    font-weight: 700 !important;
+    color: #f0f4ff !important;
+}
+div[data-testid="metric-container"] > div:nth-child(3) {
+    font-size: 0.7rem !important;
+    color: #5a6a8a !important;
+}
+
+/* ── Bordered containers (card style for st.container(border=True)) ── */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #141d30 !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+/* ── DataFrames ── */
+div[data-testid="stDataFrame"] {
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    background: #121a2b !important;
+}
+div[data-testid="stDataFrame"] table {
+    background: #121a2b !important;
+    color: #d0d8e8 !important;
+    font-size: 0.78rem !important;
+}
+div[data-testid="stDataFrame"] th {
+    background: #162033 !important;
+    color: #7a88a6 !important;
+    font-weight: 500 !important;
+    font-size: 0.68rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.55rem 0.65rem !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+}
+div[data-testid="stDataFrame"] td {
+    background: #121a2b !important;
+    color: #c8d0e0 !important;
+    padding: 0.45rem 0.65rem !important;
+    border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+}
+div[data-testid="stDataFrame"] tr:hover td {
+    background: #162033 !important;
+}
+
+/* ── Expander ── */
+div[data-testid="stExpander"] {
+    background: #121a2b !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+}
+div[data-testid="stExpander"] summary {
+    color: #9aa6bd !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+}
+div[data-testid="stExpander"] summary:hover {
+    color: #e8edf5 !important;
+}
+
+/* ── Buttons ── */
+.stButton button {
+    border-radius: 6px !important;
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    background: #1e2a45 !important;
+    color: #c8d0e0 !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    transition: all 0.12s;
+}
+.stButton button:hover {
+    background: #2a3a5a !important;
+    color: #f0f4ff !important;
+    border-color: rgba(255,255,255,0.15) !important;
+}
+.stButton button[kind="primary"] {
+    background: #1a4a7a !important;
+    color: #f0f4ff !important;
+    border: none !important;
+}
+.stButton button[kind="primary"]:hover {
+    background: #205a90 !important;
+}
+
+/* ── Tabs (minimal: font / weight / color / underline only) ── */
+div[data-testid="stTabs"] button {
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    color: #7a88a6 !important;
+    padding: 0.5rem 1.1rem !important;
+    background: transparent !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+}
+div[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #f0f4ff !important;
+    border-bottom-color: #3e8ec0 !important;
+}
+div[data-testid="stTabs"] button:hover {
+    color: #c8d0e0 !important;
+}
+
+/* ── Alert / Info / Error ── */
+div[data-testid="stAlert"] {
+    border-radius: 6px !important;
+    font-size: 0.8rem !important;
+}
+div[data-testid="stInfo"] {
+    background: #121a2b !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    color: #9aa6bd !important;
+}
+div[data-testid="stSuccess"] { background: #0a1f18 !important; color: #3ecf8e !important; }
+div[data-testid="stError"] { background: #1f0a0a !important; color: #e85a5a !important; }
+div[data-testid="stWarning"] { background: #1a1508 !important; color: #c8a96b !important; }
+
+/* ── Code block ── */
+code {
+    background: #162033 !important;
+    color: #c8d0e0 !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 4px !important;
+}
+pre {
+    background: #0e1525 !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 6px !important;
+}
+
+/* ── Input fields ── */
+input, textarea, select, div[data-baseweb="select"] > div {
+    background-color: #0e1525 !important;
+    color: #e8edf5 !important;
+    border-color: rgba(255,255,255,0.1) !important;
+    border-radius: 6px !important;
+}
+input:focus, textarea:focus {
+    border-color: #3e8ec0 !important;
+}
+
+/* ── Checkbox ── */
+label[data-testid="stCheckbox"] span {
+    color: #9aa6bd !important;
+}
+
+/* ── Dividers ── */
+hr {
+    border-color: rgba(255,255,255,0.06) !important;
+    margin: 0.75rem 0 !important;
+}
+
+/* ── Caption ── */
+[data-testid="stCaptionContainer"] {
+    color: #7a88a6 !important;
+}
+</style>
+"""
+
+# ======================================================================
+#  Chinese mappings
+# ======================================================================
+
+_COL_CN = {
     "stock_code": "股票代码",
     "stock_name": "股票名称",
     "market": "市场",
     "exchange": "交易所",
     "pool_name": "股票池",
     "source": "来源",
-    "is_active": "启用状态",
+    "is_active": "状态",
     "is_blacklisted": "黑名单",
     "note": "备注",
     "created_at": "创建时间",
     "updated_at": "更新时间",
+    "task_type": "任务类型",
+    "adj_type": "复权类型",
+    "status": "执行状态",
+    "row_count": "行数",
+    "started_at": "开始时间",
+    "finished_at": "完成时间",
+    "error_message": "错误信息",
 }
 
-
-def _label_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename DataFrame columns to Chinese labels for display."""
-    rename = {k: v for k, v in _COLUMN_LABELS.items() if k in df.columns}
-    return df.rename(columns=rename)
+_TASK_CN = {"historical_load": "历史初始化", "daily_incremental": "增量更新"}
+_ADJ_CN = {"raw": "不复权", "qfq": "前复权"}
+_STAT_CN = {"success": "成功", "failed": "失败", "empty": "空结果", "skipped": "跳过"}
 
 
-# ── Page config ─────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="A股量化研究平台",
-    page_icon="📈",
-    layout="wide",
-)
+def fmt_cols(df: pd.DataFrame) -> pd.DataFrame:
+    return df.rename(columns={k: v for k, v in _COL_CN.items() if k in df.columns})
 
-st.title("📈 A股量化研究平台")
-st.markdown("**A股 500 支核心股票池量化研究平台**")
 
+def fmt_log(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    if "task_type" in d.columns:
+        d["task_type"] = d["task_type"].map(_TASK_CN).fillna(d["task_type"])
+    if "adj_type" in d.columns:
+        d["adj_type"] = d["adj_type"].map(_ADJ_CN).fillna(d["adj_type"])
+    if "status" in d.columns:
+        d["status"] = d["status"].map(_STAT_CN).fillna(d["status"])
+    for c in ("started_at", "finished_at"):
+        if c in d.columns:
+            d[c] = pd.to_datetime(d[c], errors="coerce").dt.strftime("%Y-%m-%d %H:%M")
+    return fmt_cols(d)
+
+
+def fmt_pool(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    if "is_active" in d.columns:
+        d["is_active"] = d["is_active"].apply(lambda x: "启用" if x else "停用")
+    if "is_blacklisted" in d.columns:
+        d["is_blacklisted"] = d["is_blacklisted"].apply(lambda x: "黑名单" if x else "正常")
+    return fmt_cols(d)
+
+
+# ======================================================================
+#  Page setup
+# ======================================================================
+
+st.set_page_config(page_title="Quant A-Share", layout="wide", initial_sidebar_state="collapsed")
+st.markdown(_CSS, unsafe_allow_html=True)
 init_database()
 
-# ── Tab navigation ──────────────────────────────────────────────────────
-tab_overview, tab_pool_mgmt, tab_filters, tab_hist_data = st.tabs([
-    "📊 项目概览",
-    "📂 股票池管理",
-    "🔍 过滤测试",
-    "📜 历史数据初始化",
-])
+# ======================================================================
+#  Top spacer — keeps tabs clear of the Streamlit header bar
+# ======================================================================
 
-# =====================================================================
-#  TAB 1 — 项目概览
-# =====================================================================
-with tab_overview:
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("当前版本", "V0.3")
-        st.caption("20 年历史数据初始化")
-    with col2:
-        st.metric("当前阶段", "历史数据初始化")
-        st.caption("已完成：股票池管理 + 历史数据拉取")
+st.markdown(
+    "<div style='height:0.75rem'></div>",
+    unsafe_allow_html=True,
+)
 
-    st.divider()
-    st.subheader("后续模块入口")
-    modules = [
-        "股票池管理 ✅",
-        "历史数据初始化 ✅",
-        "每日增量更新",
-        "数据质量检查",
-        "因子分析",
-        "TopK 回测",
-        "Qlib 研究",
-        "AI 分析报告",
-    ]
-    for m in modules:
-        st.info(m)
+# ======================================================================
+#  Tabs
+# ======================================================================
 
-    st.divider()
-    st.subheader("⚠️ 风险提示")
-    st.warning("本项目仅用于个人量化研究和学习。不构成任何投资建议。不进行自动下单。不接入实盘交易。")
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果"]
+t_overview, t_pool, t_hist, t_daily, t_filter = st.tabs(TAB_NAMES)
 
-# =====================================================================
-#  TAB 2 — 股票池管理
-# =====================================================================
-with tab_pool_mgmt:
-    st.subheader("📂 股票池管理")
+# ======================================================================
+#  TAB: 总览
+# ======================================================================
 
-    # ── Side actions ─────────────────────────────────────────────────
-    col_left, col_right = st.columns([1, 2])
-
-    with col_left:
-        st.markdown("**导入股票池**")
-        if st.button("📥 导入 core_500.csv", use_container_width=True):
-            try:
-                df = load_stock_pool_from_csv()
-                result = save_stock_pool_to_db(df)
-                st.success(
-                    f"导入完成: {result['inserted_count']} 新增, "
-                    f"{result['updated_count']} 更新, "
-                    f"共 {result['total_count']} 条"
-                )
-            except Exception as e:
-                st.error(f"导入失败: {e}")
-
-        st.divider()
-
-        st.markdown("**添加单只股票**")
-        with st.form("add_stock_form", clear_on_submit=True):
-            code_input = st.text_input("股票代码", placeholder="000001")
-            name_input = st.text_input("股票名称", placeholder="平安银行")
-            exchange_input = st.text_input(
-                "交易所 (留空自动推断)", placeholder="SZ / SH / BJ"
-            )
-            note_input = st.text_input("备注", placeholder="可选")
-            submitted = st.form_submit_button("➕ 添加", use_container_width=True)
-
-            if submitted:
-                try:
-                    code = validate_stock_code(code_input)
-                    exch = exchange_input.strip() if exchange_input.strip() else None
-                    result = add_stock_to_pool(
-                        stock_code=code,
-                        stock_name=name_input.strip(),
-                        exchange=exch,
-                        note=note_input.strip(),
-                    )
-                    st.success(f"{result['action']}: {code} {name_input}")
-                except Exception as e:
-                    st.error(f"添加失败: {e}")
-
-    # ── Main table area ──────────────────────────────────────────────
-    with col_right:
-        st.markdown("**筛选条件**")
-        filter_cols = st.columns(4)
-        with filter_cols[0]:
-            pool_filter = st.text_input("股票池名称", value="core_500")
-        with filter_cols[1]:
-            incl_inactive = st.checkbox("包含未启用", value=True)
-        with filter_cols[2]:
-            incl_blacklisted = st.checkbox("包含黑名单", value=True)
-        with filter_cols[3]:
-            search = st.text_input("搜索代码/名称", placeholder="输入关键词")
-
-        try:
-            df_pool = get_stock_pool(
-                pool_name=pool_filter or "core_500",
-                include_inactive=incl_inactive,
-                include_blacklisted=incl_blacklisted,
-            )
-
-            if search:
-                mask = (
-                    df_pool["stock_code"].str.contains(search, na=False)
-                    | df_pool["stock_name"].str.contains(search, na=False)
-                )
-                df_pool = df_pool[mask]
-
-            st.markdown(f"**共 {len(df_pool)} 条记录**")
-
-            # Display with custom formatting
-            if not df_pool.empty:
-                display_cols = [
-                    "stock_code", "stock_name", "market", "exchange",
-                    "pool_name", "is_active", "is_blacklisted",
-                    "note", "updated_at",
-                ]
-                display_cols = [c for c in display_cols if c in df_pool.columns]
-
-                # Format booleans for display
-                df_display = df_pool[display_cols].copy()
-                if "is_active" in df_display.columns:
-                    df_display["is_active"] = df_display["is_active"].apply(
-                        lambda x: "✅ 启用" if x else "❌ 停用"
-                    )
-                if "is_blacklisted" in df_display.columns:
-                    df_display["is_blacklisted"] = df_display["is_blacklisted"].apply(
-                        lambda x: "⛔ 是" if x else "✅ 否"
-                    )
-                # Rename columns to Chinese labels
-                df_display = _label_columns(df_display)
-                st.dataframe(df_display, use_container_width=True, height=400)
-
-        except Exception as e:
-            st.warning(f"查询失败 (可能股票池为空): {e}")
-
-    # ── Stock actions ────────────────────────────────────────────────
-    st.divider()
-    col_act1, col_act2, col_act3, col_act4, col_act5 = st.columns(5)
-
-    if not df_pool.empty:
-        all_codes = df_pool["stock_code"].unique().tolist()
-    else:
-        all_codes = []
-
-    with col_act1:
-        sel_code = st.selectbox("选择股票代码", options=all_codes, key="action_code")
-
-    with col_act2:
-        if st.button("✅ 激活", use_container_width=True) and sel_code:
-            try:
-                ok = activate_stock(sel_code)
-                st.success(f"{sel_code} 已激活" if ok else f"{sel_code} 未找到")
-            except Exception as e:
-                st.error(str(e))
-
-    with col_act3:
-        if st.button("⏸️ 停用", use_container_width=True) and sel_code:
-            try:
-                ok = deactivate_stock(sel_code)
-                st.success(f"{sel_code} 已停用" if ok else f"{sel_code} 未找到")
-            except Exception as e:
-                st.error(str(e))
-
-    with col_act4:
-        if st.button("⛔ 加入黑名单", use_container_width=True) and sel_code:
-            try:
-                ok = blacklist_stock(sel_code)
-                st.success(f"{sel_code} 已加入黑名单" if ok else f"{sel_code} 未找到")
-            except Exception as e:
-                st.error(str(e))
-
-    with col_act5:
-        if st.button("✅ 移出黑名单", use_container_width=True) and sel_code:
-            try:
-                ok = remove_blacklist(sel_code)
-                st.success(f"{sel_code} 已移出黑名单" if ok else f"{sel_code} 未找到")
-            except Exception as e:
-                st.error(str(e))
-
-    # ── Delete (with confirmation) ───────────────────────────────────
-    col_del1, col_del2, _ = st.columns([1, 1, 4])
-    with col_del1:
-        sel_del_code = st.selectbox("选择要删除的股票", options=all_codes, key="del_code")
-    with col_del2:
-        if st.button("🗑️ 物理删除", use_container_width=True) and sel_del_code:
-            if st.checkbox(f"确认删除 {sel_del_code}？", key="confirm_del"):
-                try:
-                    ok = delete_stock_from_pool(sel_del_code)
-                    st.success(f"{sel_del_code} 已删除" if ok else f"{sel_del_code} 未找到")
-                except Exception as e:
-                    st.error(str(e))
-
-
-# =====================================================================
-#  TAB 3 — 过滤测试
-# =====================================================================
-with tab_filters:
-    st.subheader("🔍 过滤功能测试")
-
-    st.markdown("""
-    使用当前股票池数据测试各过滤器的效果。
-    注意：部分过滤器依赖额外的数据字段（如 `list_date`、`amount_mean_20`、`status`），
-    当前股票池不包含这些字段，这些过滤器会直接返回原始数据。
-    """)
-
-    try:
-        pool_for_filter = get_stock_pool(include_inactive=True, include_blacklisted=True)
-    except Exception:
-        pool_for_filter = pd.DataFrame()
-
-    if pool_for_filter.empty:
-        st.info("股票池为空，请先导入 core_500.csv")
-    else:
-        col_f1, col_f2 = st.columns(2)
-
-        with col_f1:
-            with st.container(border=True):
-                st.markdown("**原始股票池**")
-                _df = pool_for_filter[["stock_code", "stock_name", "is_active", "is_blacklisted"]].copy()
-                _df["is_active"] = _df["is_active"].apply(lambda x: "✅ 启用" if x else "❌ 停用")
-                _df["is_blacklisted"] = _df["is_blacklisted"].apply(lambda x: "⛔ 是" if x else "✅ 否")
-                st.dataframe(
-                    _label_columns(_df),
-                    use_container_width=True,
-                )
-                st.caption(f"共 {len(pool_for_filter)} 条")
-
-        with col_f2:
-            with st.container(border=True):
-                st.markdown("**ST 过滤结果**")
-                filtered_st = filter_st_stocks(pool_for_filter)
-                _df2 = filtered_st[["stock_code", "stock_name"]].copy()
-                st.dataframe(
-                    _label_columns(_df2),
-                    use_container_width=True,
-                )
-                st.caption(f"剩余 {len(filtered_st)} 条 (过滤掉 {len(pool_for_filter) - len(filtered_st)} 条)")
-
-        st.divider()
-
-        with st.container(border=True):
-            st.markdown("**组合过滤器 (apply_basic_filters)**")
-            from src.universe.filters import apply_basic_filters
-            filtered_all = apply_basic_filters(pool_for_filter)
-            _df3 = filtered_all[["stock_code", "stock_name"]].copy()
-            st.dataframe(
-                _label_columns(_df3),
-                use_container_width=True,
-            )
-            st.caption(f"原始 {len(pool_for_filter)} → 剩余 {len(filtered_all)}")
-
-        st.info(
-            "💡 后续版本 (V0.3+) 会在 stock_basic 表中增加 "
-            "`list_date`、`amount_mean_20`、`status` 字段，届时过滤器将全面生效。"
+with t_overview:
+    # ═══════════════════════════════════════════════════════════════════
+    #  Hero — brand area
+    # ═══════════════════════════════════════════════════════════════════
+    h_left, h_right = st.columns([1.5, 1])
+    with h_left:
+        st.markdown(
+            '<div style="font-size:1.5rem;font-weight:700;color:#f0f4ff;'
+            'letter-spacing:-0.02em;line-height:1.2;">Quant A-Share</div>'
+            '<div style="font-size:0.8rem;color:#7a88a6;">量化研究控制台</div>',
+            unsafe_allow_html=True,
+        )
+    with h_right:
+        st.markdown(
+            '<div style="display:flex;gap:0.5rem;justify-content:flex-end;'
+            'align-items:center;padding-top:0.55rem;">'
+            '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.4</span>'
+            '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">开发环境</span>'
+            '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">'
+            'AkShare + DuckDB + Parquet</span>'
+            '</div>',
+            unsafe_allow_html=True,
         )
 
+    st.markdown("<br>", unsafe_allow_html=True)
 
-# =====================================================================
-#  TAB 4 — 历史数据初始化
-# =====================================================================
-with tab_hist_data:
-    st.subheader("📜 历史数据初始化 (V0.3)")
+    # ═══════════════════════════════════════════════════════════════════
+    #  KPI cards (4 equal columns)
+    # ═══════════════════════════════════════════════════════════════════
+    try:
+        pool_total = query_df("SELECT COUNT(*) AS c FROM stock_pool").iloc[0]["c"]
+        pool_active = query_df(
+            "SELECT COUNT(*) AS c FROM stock_pool WHERE is_active=TRUE AND is_blacklisted=FALSE"
+        ).iloc[0]["c"]
+        raw_rows = query_df("SELECT COUNT(*) AS c FROM stock_daily_raw").iloc[0]["c"]
+        qfq_rows = query_df("SELECT COUNT(*) AS c FROM stock_daily_qfq").iloc[0]["c"]
+        log_total = query_df("SELECT COUNT(*) AS c FROM data_update_log").iloc[0]["c"]
+    except Exception:
+        pool_total = pool_active = raw_rows = qfq_rows = log_total = 0
 
-    st.markdown("""
-    本页面展示历史数据初始化的状态。
-    **当前版本不提供从页面直接拉取 500 支全量数据的功能**（避免 Streamlit 阻塞）。
+    # DEBUG: show actual DB path and counts
+    import os
+    from config.settings import get_duckdb_path
+    _dbp = str(get_duckdb_path().resolve())
+    _db_exists = os.path.exists(_dbp)
+    st.info(f"DEBUG — DB路径: `{_dbp}` | 文件存在: {_db_exists} | stock_pool行数: **{pool_total}** | 活跃: **{pool_active}**")
 
-    如需拉取数据，请在命令行中运行：
-    """)
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("股票池总数", f"{pool_total}", "已入库")
+    k2.metric("活跃股票", f"{pool_active}", "可交易")
+    k3.metric("不复权日线", f"{raw_rows:,}", "Raw")
+    k4.metric("前复权日线", f"{qfq_rows:,}", "QFQ")
 
-    st.code(
-        "# 小批量测试 (2 支股票, raw + qfq)\n"
-        "python -m src.data_update.historical_loader --pool core_500 --limit 2 --adj all\n\n"
-        "# 拉取不复权数据\n"
-        "python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj raw\n\n"
-        "# 拉取前复权数据\n"
-        "python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj qfq\n\n"
-        "# 重试失败任务\n"
-        "python -m src.data_update.retry_failed --limit 5\n",
-        language="bash",
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  Mid section — 40 / 60
+    # ═══════════════════════════════════════════════════════════════════
+    col_left, col_right = st.columns([0.4, 0.6])
+
+    # ── Left: system status + module progress ──
+    with col_left:
+        # --- System status card (single markdown block, no split HTML) ---
+        st.markdown(
+            '<div style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
+            'border-radius:10px;padding:1.1rem 1.3rem;'
+            'box-shadow:0 2px 8px rgba(0,0,0,0.3);">'
+            '<div style="font-size:0.82rem;font-weight:600;color:#b0bdd0;'
+            'margin-bottom:0.8rem;">系统状态</div>'
+            '<div style="display:grid;grid-template-columns:auto 1fr;'
+            'gap:0.45rem 1.5rem;font-size:0.78rem;">'
+            '<span style="color:#7a88a6;">环境</span>'
+            '<span style="color:#d0d8e8;">开发环境</span>'
+            '<span style="color:#7a88a6;">数据源</span>'
+            '<span style="color:#d0d8e8;">AkShare</span>'
+            '<span style="color:#7a88a6;">存储</span>'
+            '<span style="color:#d0d8e8;">DuckDB + Parquet</span>'
+            '<span style="color:#7a88a6;">更新日志</span>'
+            f'<span style="color:#d0d8e8;">{log_total} 条</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # --- Module progress card (single markdown block) ---
+        _badge_done = (
+            '<span style="background:#0d3d2a;color:#3ecf8e;padding:2px 10px;'
+            'border-radius:10px;font-size:0.7rem;font-weight:500;">已完成</span>'
+        )
+        _badge_planned = (
+            '<span style="background:transparent;color:#7a88a6;padding:2px 10px;'
+            'border-radius:10px;font-size:0.7rem;border:1px solid #3a4a6a;">规划中</span>'
+        )
+        _mod_rows = "\n".join(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:0.35rem 0;">'
+            f'<span style="font-size:0.78rem;color:#c8d0e0;">{name}</span>'
+            f'{_badge_done if done else _badge_planned}'
+            f'</div>'
+            for name, done in [
+                ("股票池管理", True),
+                ("历史数据初始化", True),
+                ("每日增量更新", True),
+                ("数据质量检查", False),
+                ("因子分析", False),
+                ("TopK 回测", False),
+            ]
+        )
+        st.markdown(
+            '<div style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
+            'border-radius:10px;padding:1.1rem 1.3rem;'
+            'box-shadow:0 2px 8px rgba(0,0,0,0.3);">'
+            '<div style="font-size:0.82rem;font-weight:600;color:#b0bdd0;'
+            'margin-bottom:0.8rem;">模块进度</div>'
+            f'{_mod_rows}'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Right: recent updates ──
+    with col_right:
+        with st.container(border=True):
+            st.markdown(
+                '<div style="font-size:0.82rem;font-weight:600;color:#b0bdd0;'
+                'margin-bottom:0.1rem;">最近更新</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("最近 10 条任务记录")
+            try:
+                from src.data_update.update_log import get_recent_update_logs
+
+                logs = get_recent_update_logs(limit=10)
+                if not logs.empty:
+                    cols = ["stock_code", "task_type", "adj_type", "status", "row_count", "started_at"]
+                    cols = [c for c in cols if c in logs.columns]
+                    st.dataframe(
+                        fmt_log(logs[cols]),
+                        use_container_width=True, height=270,
+                        key="df_overview_logs",
+                        selection_mode="single-row",
+                        on_select="ignore",
+                    )
+                else:
+                    st.markdown(
+                        '<div style="font-size:0.78rem;color:#5a6a8a;padding:1rem 0;">'
+                        '暂无更新日志</div>',
+                        unsafe_allow_html=True,
+                    )
+            except Exception:
+                st.markdown(
+                    '<div style="font-size:0.78rem;color:#5a6a8a;padding:1rem 0;">'
+                    '无法加载日志</div>',
+                    unsafe_allow_html=True,
+                )
+
+# ======================================================================
+#  TAB: 股票池
+# ======================================================================
+
+with t_pool:
+    col_l, col_r = st.columns([1, 2.2])
+
+    with col_l:
+        st.markdown(
+            '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;'
+            'color:#5a6a8a;margin-bottom:0.5rem;">操作</div>',
+            unsafe_allow_html=True,
+        )
+
+        with st.container(border=True):
+            if st.button("导入股票池", use_container_width=True):
+                try:
+                    r = save_stock_pool_to_db(load_stock_pool_from_csv())
+                    st.success(f"导入完成：新增 {r['inserted_count']}")
+                except Exception as e:
+                    st.error(f"导入失败：{e}")
+
+            with st.expander("新增股票"):
+                with st.form("add_form", clear_on_submit=True):
+                    c = st.text_input("股票代码", placeholder="000001", key="f_code")
+                    n = st.text_input("股票名称", placeholder="平安银行", key="f_name")
+                    e = st.text_input("交易所", placeholder="留空自动推断", key="f_exch")
+                    nt = st.text_input("备注", placeholder="可选", key="f_note")
+                    if st.form_submit_button("确认新增", use_container_width=True):
+                        try:
+                            code = validate_stock_code(c)
+                            exch = e.strip() if e.strip() else None
+                            r_ = add_stock_to_pool(
+                                stock_code=code, stock_name=n.strip(),
+                                exchange=exch, note=nt.strip(),
+                            )
+                            st.success(f"新增成功：{code}")
+                        except Exception as e:
+                            st.error(str(e))
+
+        try:
+            pool_raw = get_stock_pool(include_inactive=True, include_blacklisted=True)
+        except Exception:
+            pool_raw = pd.DataFrame()
+
+        if not pool_raw.empty:
+            with st.container(border=True):
+                st.caption("状态变更")
+                sel = st.selectbox(
+                    "选择股票", pool_raw["stock_code"].unique(),
+                    label_visibility="collapsed", key="pool_sel",
+                )
+                if sel:
+                    ca, cb, cc, cd = st.columns(4)
+                    with ca:
+                        if st.button("启用", use_container_width=True):
+                            try:
+                                st.success("已启用" if activate_stock(sel) else "未找到")
+                            except Exception as e:
+                                st.error(str(e))
+                    with cb:
+                        if st.button("停用", use_container_width=True):
+                            try:
+                                st.success("已停用" if deactivate_stock(sel) else "未找到")
+                            except Exception as e:
+                                st.error(str(e))
+                    with cc:
+                        if st.button("加黑", use_container_width=True):
+                            try:
+                                st.success("已加黑" if blacklist_stock(sel) else "未找到")
+                            except Exception as e:
+                                st.error(str(e))
+                    with cd:
+                        if st.button("解除", use_container_width=True):
+                            try:
+                                st.success("已解除" if remove_blacklist(sel) else "未找到")
+                            except Exception as e:
+                                st.error(str(e))
+                    if st.button("删除", use_container_width=True, type="secondary"):
+                        try:
+                            st.success("已删除" if delete_stock_from_pool(sel) else "未找到")
+                        except Exception as e:
+                            st.error(str(e))
+
+    with col_r:
+        st.markdown(
+            '<div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;'
+            'color:#5a6a8a;margin-bottom:0.5rem;">查询</div>',
+            unsafe_allow_html=True,
+        )
+
+        with st.container(border=True):
+            f1, f2, f3, f4 = st.columns(4)
+            with f1:
+                pname = st.text_input("股票池", value="core_500", label_visibility="collapsed")
+            with f2:
+                ia = st.checkbox("未启用", value=True)
+            with f3:
+                ib = st.checkbox("黑名单", value=True)
+            with f4:
+                q = st.text_input("搜索", placeholder="代码/名称", label_visibility="collapsed")
+
+            try:
+                df_pool = get_stock_pool(
+                    pool_name=pname or "core_500",
+                    include_inactive=ia, include_blacklisted=ib,
+                )
+                if q:
+                    m = df_pool["stock_code"].str.contains(q, na=False) | df_pool["stock_name"].str.contains(q, na=False)
+                    df_pool = df_pool[m]
+
+                a_cnt = int(df_pool["is_active"].sum()) if "is_active" in df_pool.columns else 0
+                b_cnt = int(df_pool["is_blacklisted"].sum()) if "is_blacklisted" in df_pool.columns else 0
+                st.markdown(
+                    f'<span style="color:#c8d0e0;font-size:0.85rem;">'
+                    f'{len(df_pool)} 只股票</span>'
+                    f'<span style="color:#5a6a8a;font-size:0.78rem;margin-left:0.8rem;">'
+                    f'{a_cnt} 启用 / {b_cnt} 黑名单</span>',
+                    unsafe_allow_html=True,
+                )
+                if not df_pool.empty:
+                    sc = [c for c in [
+                        "stock_code", "stock_name", "market", "exchange",
+                        "pool_name", "is_active", "is_blacklisted", "note",
+                    ] if c in df_pool.columns]
+                    st.dataframe(
+                        fmt_pool(df_pool[sc]),
+                        use_container_width=True, height=520,
+                        key="df_pool_query",
+                        selection_mode="single-row",
+                        on_select="ignore",
+                    )
+            except Exception as e:
+                st.warning(f"查询失败：{e}")
+
+# ======================================================================
+#  TAB: 数据初始化
+# ======================================================================
+
+with t_hist:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        '页面展示状态，批量任务请在命令行执行。</div>',
+        unsafe_allow_html=True,
     )
+    for _ in [1]:  # single-pass init
+        try:
+            rc = query_df("SELECT COUNT(*) AS c FROM stock_daily_raw").iloc[0]["c"]
+            qc = query_df("SELECT COUNT(*) AS c FROM stock_daily_qfq").iloc[0]["c"]
+            lc = query_df("SELECT COUNT(*) AS c FROM data_update_log WHERE task_type='historical_load'").iloc[0]["c"]
+        except Exception:
+            rc = qc = lc = 0
 
-    st.divider()
+    from src.data_update.update_log import get_update_summary
 
-    # ── Data table row counts ─────────────────────────────────────────
-    st.subheader("📊 数据表行数")
-
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("不复权日线", f"{rc:,}")
+    k2.metric("前复权日线", f"{qc:,}")
+    k3.metric("日志", f"{lc:,}")
     try:
-        raw_count = query_df("SELECT COUNT(*) AS cnt FROM stock_daily_raw").iloc[0]["cnt"]
-        qfq_count = query_df("SELECT COUNT(*) AS cnt FROM stock_daily_qfq").iloc[0]["cnt"]
-        log_count = query_df("SELECT COUNT(*) AS cnt FROM data_update_log").iloc[0]["cnt"]
+        s = get_update_summary("historical_load")
+        k4.metric("成功", s["success"], f"失败 {s['failed']}")
+    except Exception:
+        k4.metric("成功", "—")
 
-        col_r1, col_r2, col_r3 = st.columns(3)
-        col_r1.metric("stock_daily_raw 行数", f"{raw_count:,}")
-        col_r2.metric("stock_daily_qfq 行数", f"{qfq_count:,}")
-        col_r3.metric("data_update_log 行数", f"{log_count:,}")
-    except Exception as e:
-        st.warning(f"查询数据表行数失败: {e}")
+    st.markdown("<br>", unsafe_allow_html=True)
+    ca, cb = st.columns([1, 1.2])
 
-    # ── Update summary ────────────────────────────────────────────────
-    st.divider()
-    st.subheader("📋 更新日志汇总")
+    with ca:
+        with st.container(border=True):
+            st.caption("状态")
+            try:
+                s = get_update_summary("historical_load")
+                st.markdown(
+                    f'<span style="color:#c8d0e0;font-size:0.8rem;">'
+                    f'成功 {s["success"]}　失败 {s["failed"]}　空结果 {s["empty"]}　跳过 {s["skipped"]}</span>',
+                    unsafe_allow_html=True,
+                )
+            except Exception:
+                st.markdown("暂无数据")
+        with st.expander("命令"):
+            st.code(
+                "python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj all\n"
+                "python -m src.data_update.retry_failed --limit 10",
+                language="bash",
+            )
 
+    with cb:
+        with st.container(border=True):
+            st.caption("最近日志")
+            try:
+                logs = get_recent_update_logs(limit=30)
+                if not logs.empty:
+                    st.dataframe(
+                        fmt_log(logs[["stock_code", "adj_type", "status", "row_count", "started_at"]]),
+                        use_container_width=True, height=300,
+                        key="df_hist_logs",
+                        selection_mode="single-row",
+                        on_select="ignore",
+                    )
+                else:
+                    st.markdown("暂无日志")
+            except Exception as e:
+                st.markdown(f"加载失败：{e}")
+
+# ======================================================================
+#  TAB: 增量更新
+# ======================================================================
+
+with t_daily:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        '页面展示状态，批量任务请在命令行执行。</div>',
+        unsafe_allow_html=True,
+    )
     try:
-        from src.data_update.update_log import get_update_summary
-        summary = get_update_summary(task_type="historical_load")
-        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-        col_s1.metric("✅ Success", summary["success"])
-        col_s2.metric("❌ Failed", summary["failed"])
-        col_s3.metric("○ Empty", summary["empty"])
-        col_s4.metric("⏭️ Skipped", summary["skipped"])
-    except Exception as e:
-        st.warning(f"查询更新日志汇总失败: {e}")
+        rc2 = query_df("SELECT COUNT(*) AS c FROM stock_daily_raw").iloc[0]["c"]
+        qc2 = query_df("SELECT COUNT(*) AS c FROM stock_daily_qfq").iloc[0]["c"]
+        lc2 = query_df("SELECT COUNT(*) AS c FROM data_update_log WHERE task_type='daily_incremental'").iloc[0]["c"]
+    except Exception:
+        rc2 = qc2 = lc2 = 0
 
-    # ── Recent logs ───────────────────────────────────────────────────
-    st.divider()
-    st.subheader("🕐 最近更新日志 (最近 100 条)")
-
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("不复权日线", f"{rc2:,}")
+    k2.metric("前复权日线", f"{qc2:,}")
+    k3.metric("增量日志", f"{lc2:,}")
     try:
-        from src.data_update.update_log import get_recent_update_logs
-        logs = get_recent_update_logs(limit=100)
-        if logs.empty:
-            st.info("暂无更新日志。请先运行历史数据拉取命令。")
-        else:
-            # Format for display
-            display_logs = logs.copy()
-            if "started_at" in display_logs.columns:
-                display_logs["started_at"] = pd.to_datetime(display_logs["started_at"]).dt.strftime("%Y-%m-%d %H:%M")
-            if "finished_at" in display_logs.columns:
-                display_logs["finished_at"] = pd.to_datetime(display_logs["finished_at"]).dt.strftime("%Y-%m-%d %H:%M")
+        s = get_update_summary("daily_incremental")
+        k4.metric("成功", s["success"], f"跳过 {s['skipped']}")
+    except Exception:
+        k4.metric("成功", "—")
 
-            st.dataframe(display_logs, use_container_width=True, height=400)
-    except Exception as e:
-        st.warning(f"查询更新日志失败: {e}")
+    st.markdown("<br>", unsafe_allow_html=True)
+    ca2, cb2 = st.columns([1, 1.2])
+
+    with ca2:
+        with st.container(border=True):
+            st.caption("状态")
+            try:
+                s = get_update_summary("daily_incremental")
+                st.markdown(
+                    f'<span style="color:#c8d0e0;font-size:0.8rem;">'
+                    f'成功 {s["success"]}　失败 {s["failed"]}　空结果 {s["empty"]}　跳过 {s["skipped"]}</span>',
+                    unsafe_allow_html=True,
+                )
+            except Exception:
+                st.markdown("暂无数据")
+        with st.expander("命令"):
+            st.code(
+                "python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj all\n"
+                "python -m src.data_update.daily_incremental --pool core_500 --limit 3 --start-date 20260701 --end-date 20260703 --force",
+                language="bash",
+            )
+
+    with cb2:
+        with st.container(border=True):
+            st.caption("最近日志")
+            try:
+                logs = get_recent_update_logs(limit=30)
+                if not logs.empty:
+                    inc = logs[logs["task_type"] == "daily_incremental"] if "task_type" in logs.columns else logs
+                    if not inc.empty:
+                        st.dataframe(
+                            fmt_log(inc[["stock_code", "adj_type", "status", "row_count", "started_at"]]),
+                            use_container_width=True, height=300,
+                            key="df_daily_logs",
+                            selection_mode="single-row",
+                            on_select="ignore",
+                        )
+                    else:
+                        st.markdown("暂无增量日志")
+                else:
+                    st.markdown("暂无日志")
+            except Exception as e:
+                st.markdown(f"加载失败：{e}")
+
+# ======================================================================
+#  TAB: 过滤结果
+# ======================================================================
+
+with t_filter:
+    try:
+        raw_pool = get_stock_pool(include_inactive=True, include_blacklisted=True)
+    except Exception:
+        raw_pool = pd.DataFrame()
+
+    if raw_pool.empty:
+        st.markdown(
+            '<div style="font-size:0.8rem;color:#5a6a8a;">'
+            '股票池为空，请先在「股票池」页面导入。</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        n_raw = len(raw_pool)
+        n_st = len(filter_st_stocks(raw_pool))
+        n_all = len(apply_basic_filters(raw_pool))
+
+        st.markdown(
+            f'<div style="font-size:0.82rem;color:#c8d0e0;margin-bottom:0.8rem;">'
+            f'原始 {n_raw} 只 → ST 过滤 {n_st} 只 → 组合过滤 {n_all} 只'
+            f'<span style="color:#5a6a8a;font-size:0.72rem;margin-left:0.6rem;">'
+            f'（过滤 {n_raw - n_all} 只）</span></div>',
+            unsafe_allow_html=True,
+        )
+
+        co, cr = st.columns(2)
+
+        with co:
+            with st.container(border=True):
+                st.caption("原始股票池")
+                dd = raw_pool[["stock_code", "stock_name", "is_active", "is_blacklisted"]].copy()
+                st.dataframe(
+                    fmt_pool(dd),
+                    use_container_width=True, height=420,
+                    key="df_filter_raw",
+                    selection_mode="single-row",
+                    on_select="ignore",
+                )
+
+        with cr:
+            with st.container(border=True):
+                st.caption("ST 过滤结果")
+                dd2 = filter_st_stocks(raw_pool)[["stock_code", "stock_name"]].copy()
+                st.dataframe(
+                    fmt_pool(dd2),
+                    use_container_width=True, height=420,
+                    key="df_filter_st",
+                    selection_mode="single-row",
+                    on_select="ignore",
+                )
+                st.markdown(
+                    f'<span style="color:#5a6a8a;font-size:0.72rem;">剩余 {n_st} 只（过滤 {n_raw - n_st} 只）</span>',
+                    unsafe_allow_html=True,
+                )

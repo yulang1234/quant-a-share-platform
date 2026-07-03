@@ -16,7 +16,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import pandas as pd
 
 from config.settings import get_stock_pool_path

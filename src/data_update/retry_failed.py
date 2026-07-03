@@ -19,7 +19,7 @@ from datetime import datetime
 
 from config.settings import ensure_dirs
 from src.data_update.historical_loader import load_one_stock
-from src.data_update.update_log import get_failed_tasks, get_update_summary
+from src.data_update.update_log import get_failed_tasks
 from src.storage.duckdb_repo import init_database
 
 logger = logging.getLogger(__name__)

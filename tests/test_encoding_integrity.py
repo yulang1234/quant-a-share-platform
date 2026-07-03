@@ -69,13 +69,18 @@ class TestCsvIntegrity:
                 assert market == b"A\xe8\x82\xa1", \
                     f"Row {i} market field is {market!r}, expected UTF-8 'A股'"
 
-    def test_exchange_is_sh_or_sz(self) -> None:
+    def test_exchange_is_valid_sh_sz_bj(self) -> None:
+        """Exchanges cover Shanghai (SH), Shenzhen (SZ), and Beijing (BJ).
+
+        The Beijing Stock Exchange (BSE) hosts stocks whose codes start
+        with ``8`` or ``4``; these are part of the curated core_500 pool.
+        """
         with open(self.CSV_PATH, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
             next(reader)
             for i, row in enumerate(reader, 2):
                 exch = row[3]
-                assert exch in ("SH", "SZ"), \
+                assert exch in ("SH", "SZ", "BJ"), \
                     f"Row {i} invalid exchange: {repr(exch)}"
 
     def test_pool_name_is_core_500(self) -> None:
@@ -95,13 +100,16 @@ _SOURCE_FILES = [
     "src/data_source/akshare_client.py",
     "main.py",
     "ui/streamlit_app.py",
+    "src/universe/stock_pool.py",
     "README.md",
     "docs/roadmap.md",
 ]
 
-# Characters that indicate GBK->UTF-8 mojibake or corrupted encoding
+# Characters that indicate GBK/Windows-1252 -> UTF-8 mojibake or corrupted encoding
 _GARBLED_FRAGMENTS = [
-    "杩", "杩", "绋", "绋", "鐐", "闂",  # common Windows-1252->UTF-8 junk
+    "杩", "绋", "鐐", "闂",          # common GBK/Windows-1252 mojibake fragments
+    "鑲", "鏃", "鈥", "鉁", "锛", "涓",  # reported garbled Chinese fragments
+    "æ", "Ã",                       # Latin mojibake fragments
 ]
 
 
