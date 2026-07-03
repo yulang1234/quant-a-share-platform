@@ -11,7 +11,35 @@
 - V0.1 项目骨架：完成
 - V0.2 股票池管理：完成
 - V0.3 20 年历史数据初始化：完成
-- V0.4 每日增量更新：完成，可验收
+- V0.4 每日增量更新：完成
+- V0.5 数据质量检查：完成
+
+## V0.5 已完成内容
+
+- 数据质量检查模块：对已经落库的日线数据执行基础检查
+- 重复数据检查：`stock_code + trade_date` 维度检测重复记录
+- 缺失交易日检查：基于自然日间隔检测日期缺口
+- 价格异常检查：`open/high/low/close/volume/amount` 基础规则校验
+- 质量报告汇总：`data_quality_report` 表写入与查询
+- 命令行入口：`python -m src.data_quality.quality_report`
+- Streamlit 数据质量展示页：状态、分类统计、最近问题、命令示例
+- V0.5 只检查不修复，修复重跑留给 V0.6
+- CLI 输出 ASCII safe，Windows GBK 安全
+- 测试：pytest -v 304 passed
+
+## V0.5 不做什么
+
+- 不自动修复数据（V0.6）
+- 不自动重跑失败股票（V0.6）
+- 不做因子计算（V0.7）
+- 不做评分（V0.8）
+- 不做策略与回测（V1.0）
+- 不接 Qlib / Alpha360
+- 不接 DeepSeek / GPT
+- 不做自动交易
+- 不接券商 API
+- 不做复杂交易日历系统
+- 不做自动定时任务
 
 ## V0.4 已完成内容
 
@@ -27,7 +55,7 @@
 - CLI 输出 ASCII safe，Windows GBK 安全
 - Streamlit 增量更新展示页面
 - DuckDB 新增 get_max_trade_date / count_daily_records
-- 测试：pytest -v 263 passed
+- 测试：pytest -v 263 passed（V0.4 阶段）
 
 ## V0.3 已完成内容
 
@@ -40,21 +68,7 @@
 - 失败任务查询（自动排除后续已成功的组合）与重试
 - Streamlit 历史数据初始化状态页面
 - **真实链路已验证**：平安银行(000001) 20 年日线 raw + qfq 各 4,736 行成功入库
-- 单元测试覆盖：263 个测试，含编码完整性、CLI 输出安全、CSV 结构校验、每日增量更新逻辑
-
-## V0.4 不做什么
-
-- 不做数据质量检查（V0.5）
-- 不做数据修复重跑（V0.6）
-- 不做因子计算（V0.7）
-- 不做评分（V0.8）
-- 不做策略与回测（V1.0）
-- 不接 Qlib / Alpha360
-- 不接 DeepSeek / GPT
-- 不做自动交易
-- 不接券商 API
-- 不做复杂交易日历系统
-- 不做自动定时任务
+- 单元测试覆盖：304 个测试（含 V0.5 数据质量检查）
 
 ## V0.2 已完成内容
 
@@ -143,6 +157,31 @@ python -m src.data_update.daily_incremental --pool core_500 --limit 3 --start-da
 - 重复执行不会重复写入
 - DuckDB / Parquet 只保存在本地，不提交 GitHub
 
+### 数据质量检查
+
+```bash
+# 检查 raw（限制 5 支股票）
+python -m src.data_quality.quality_report --adj raw --limit 5
+
+# 检查 qfq（限制 5 支股票）
+python -m src.data_quality.quality_report --adj qfq --limit 5
+
+# 同时检查 raw + qfq
+python -m src.data_quality.quality_report --adj all --limit 20
+
+# 单只股票检查
+python -m src.data_quality.quality_report --stock-code 000001 --adj raw
+
+# 只检查不写库
+python -m src.data_quality.quality_report --adj all --limit 5 --no-write
+```
+
+注意：
+- V0.5 依赖 V0.3 / V0.4 已完成数据落库
+- 如果数据库没有日线数据，检查结果为空，属于正常
+- V0.5 只检查不修复；修复与重跑是 V0.6
+- 结果写入 `data_quality_report` 表，状态默认 `open`
+
 ### 查看数据状态
 
 ```bash
@@ -155,7 +194,7 @@ streamlit run ui/streamlit_app.py
 pytest -v
 ```
 
-当前测试结果：263 passed。
+当前测试结果：304 passed。
 
 ## V0.3 验收前置条件
 
@@ -249,8 +288,14 @@ quant-a-share-platform/
 │   │   └── akshare_client.py    # V0.3 AkShare 封装
 │   ├── data_update/
 │   │   ├── historical_loader.py # V0.3 历史数据加载器
+│   │   ├── daily_incremental.py # V0.4 每日增量更新
 │   │   ├── update_log.py        # V0.3 更新日志
 │   │   └── retry_failed.py      # V0.3 失败重试
+│   ├── data_quality/
+│   │   ├── duplicate_checker.py # V0.5 重复数据检查
+│   │   ├── missing_date_checker.py # V0.5 缺失日期检查
+│   │   ├── price_checker.py     # V0.5 价格异常检查
+│   │   └── quality_report.py    # V0.5 质量报告汇总
 │   ├── storage/
 │   │   ├── duckdb_repo.py
 │   │   ├── parquet_repo.py
@@ -262,10 +307,16 @@ quant-a-share-platform/
 ├── tests/
 │   ├── test_akshare_client.py      # V0.3 AkShare 客户端测试
 │   ├── test_cli_output_safety.py   # V0.3 CLI 输出安全性测试
-│   ├── test_encoding_integrity.py  # V0.3 编码与 CSV 完整性测试
+│   ├── test_encoding_integrity.py  # 编码与 CSV 完整性测试
 │   ├── test_historical_loader.py   # V0.3 历史数据加载器测试
 │   ├── test_update_log.py          # V0.3 更新日志测试
 │   ├── test_parquet_repo.py        # V0.3 Parquet 仓库测试
+│   ├── test_daily_incremental.py   # V0.4 每日增量更新测试
+│   ├── test_main_startup.py        # V0.4/V0.5 启动与版本文案测试
+│   ├── test_duplicate_checker.py   # V0.5 重复数据检查测试
+│   ├── test_missing_date_checker.py # V0.5 缺失日期检查测试
+│   ├── test_price_checker.py       # V0.5 价格异常检查测试
+│   ├── test_quality_report.py      # V0.5 质量报告测试
 │   ├── test_stock_pool.py
 │   └── test_filters.py
 └── docs/
@@ -277,9 +328,9 @@ quant-a-share-platform/
 - V0.1 项目骨架 [完成]
 - V0.2 股票池管理 [完成]
 - V0.3 20 年历史数据初始化 [完成]
-- V0.4 每日增量更新 [完成，可验收]
-- V0.5 数据质量检查 [下一步]
-- V0.6 数据修复与重跑
+- V0.4 每日增量更新 [完成]
+- V0.5 数据质量检查 [完成]
+- V0.6 数据修复与重跑 [下一步]
 - V0.7 基础因子计算
 - V0.8 因子标准化与排名
 - V0.9 因子有效性分析

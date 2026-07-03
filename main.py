@@ -16,7 +16,7 @@ from config.logging_config import setup_logging
 from config.settings import APP_ENV, ensure_dirs, get_duckdb_path, get_parquet_root, get_stock_pool_path
 from src.storage.duckdb_repo import close_connection, init_database, query_df
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __app_name__ = "Quant A-Share Platform"
 
 # ── DuckDB lock / startup-error signals ───────────────────────────────
@@ -106,16 +106,19 @@ def main() -> int:
         qfq_cnt = qfq_df.iloc[0]["cnt"] if not qfq_df.empty else 0
         log_df = query_df("SELECT COUNT(*) AS cnt FROM data_update_log")
         log_cnt = log_df.iloc[0]["cnt"] if not log_df.empty else 0
+        quality_df = query_df("SELECT COUNT(*) AS cnt FROM data_quality_report")
+        quality_cnt = quality_df.iloc[0]["cnt"] if not quality_df.empty else 0
     except Exception:
         raw_cnt = 0
         qfq_cnt = 0
         log_cnt = 0
+        quality_cnt = 0
 
     # Summary (ASCII-safe only)
     print()
     print("=" * 60)
     print(f"  {__app_name__}")
-    print(f"  Version: v{__version__} (V0.4 daily incremental update)")
+    print(f"  Version: v{__version__} (V0.5 data quality check)")
     print("=" * 60)
     print()
     print(f"  DuckDB path:      {db_path}")
@@ -128,9 +131,10 @@ def main() -> int:
     print(f"    - Active stocks:  {active}")
     print()
     print("  Historical data:")
-    print(f"    - stock_daily_raw:  {raw_cnt:,} rows")
-    print(f"    - stock_daily_qfq:  {qfq_cnt:,} rows")
-    print(f"    - data_update_log:  {log_cnt:,} rows")
+    print(f"    - stock_daily_raw:      {raw_cnt:,} rows")
+    print(f"    - stock_daily_qfq:      {qfq_cnt:,} rows")
+    print(f"    - data_update_log:      {log_cnt:,} rows")
+    print(f"    - data_quality_report:  {quality_cnt:,} rows")
     print()
 
     if total == 0:
@@ -144,8 +148,8 @@ def main() -> int:
         )
         print()
 
-    print("  [INFO] V0.4 scope: daily incremental update.")
-    print("  [INFO] Next step: validate daily_incremental commands.")
+    print("  [INFO] V0.5 scope: data quality check.")
+    print("  [INFO] Next step: run quality_report checks.")
     print()
 
     close_connection()

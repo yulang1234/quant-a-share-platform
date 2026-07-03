@@ -120,6 +120,7 @@ CREATE_TABLE_SQL: list[str] = [
         issue_type      VARCHAR(32)  NOT NULL,
         issue_level     VARCHAR(16)  DEFAULT 'WARN',
         issue_detail    VARCHAR(1024),
+        adj_type        VARCHAR(8),
         status          VARCHAR(16)  DEFAULT 'open',
         created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id)

@@ -176,17 +176,17 @@ class TestVersionText:
         )
         assert "historical data initialisation)." not in src
 
-    def test_mentions_v04(self) -> None:
-        """The V0.4 milestone must be visible in the banner."""
+    def test_mentions_v05(self) -> None:
+        """The V0.5 milestone must be visible in the banner."""
         src = self._src()
-        assert "V0.4" in src
-        assert "daily incremental update" in src.lower()
+        assert "V0.5" in src
+        assert "data quality check" in src.lower()
 
-    def test_v04_scope_lines_present(self) -> None:
-        """The two [INFO] V0.4 lines must both be present."""
+    def test_v05_scope_lines_present(self) -> None:
+        """The two [INFO] V0.5 lines must both be present."""
         src = self._src()
-        assert "[INFO] V0.4 scope: daily incremental update." in src
-        assert "[INFO] Next step: validate daily_incremental commands." in src
+        assert "[INFO] V0.5 scope: data quality check." in src
+        assert "[INFO] Next step: run quality_report checks." in src
 
     def test_main_print_strings_are_ascii(self) -> None:
         """Every constant passed to print() in main.py is ASCII-safe."""

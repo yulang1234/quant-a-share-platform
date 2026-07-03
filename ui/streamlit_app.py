@@ -28,6 +28,11 @@ from src.universe.stock_pool import (
     validate_stock_code,
 )
 from src.universe.filters import apply_basic_filters, filter_st_stocks
+from src.data_quality.quality_report import (
+    count_quality_issues,
+    get_quality_issue_summary,
+    get_recent_quality_issues,
+)
 
 # ======================================================================
 #  CSS — Dark professional theme
@@ -252,11 +257,21 @@ _COL_CN = {
     "started_at": "开始时间",
     "finished_at": "完成时间",
     "error_message": "错误信息",
+    "check_date": "检查日期",
+    "issue_type": "问题类型",
+    "issue_level": "严重程度",
+    "issue_detail": "问题详情",
 }
 
 _TASK_CN = {"historical_load": "历史初始化", "daily_incremental": "增量更新"}
 _ADJ_CN = {"raw": "不复权", "qfq": "前复权"}
 _STAT_CN = {"success": "成功", "failed": "失败", "empty": "空结果", "skipped": "跳过"}
+_ISSUE_TYPE_CN = {
+    "duplicate_record": "重复记录",
+    "missing_trade_date": "缺失交易日",
+    "price_anomaly": "价格异常",
+}
+_ISSUE_LEVEL_CN = {"high": "高", "medium": "中", "low": "低"}
 
 
 def fmt_cols(df: pd.DataFrame) -> pd.DataFrame:
@@ -307,8 +322,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果"]
-t_overview, t_pool, t_hist, t_daily, t_filter = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -807,3 +822,91 @@ with t_filter:
                     f'<span style="color:#5a6a8a;font-size:0.72rem;">剩余 {n_st} 只（过滤 {n_raw - n_st} 只）</span>',
                     unsafe_allow_html=True,
                 )
+
+# ======================================================================
+#  TAB: 数据质量
+# ======================================================================
+
+with t_quality:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        '页面展示状态，批量检查请在命令行执行。V0.5 只检查不修复。</div>',
+        unsafe_allow_html=True,
+    )
+
+    try:
+        total_open = count_quality_issues(status="open")
+        raw_open = count_quality_issues(adj_type="raw", status="open")
+        qfq_open = count_quality_issues(adj_type="qfq", status="open")
+        dup_open = count_quality_issues(issue_type="duplicate_record", status="open")
+        miss_open = count_quality_issues(issue_type="missing_trade_date", status="open")
+        price_open = count_quality_issues(issue_type="price_anomaly", status="open")
+    except Exception:
+        total_open = raw_open = qfq_open = dup_open = miss_open = price_open = 0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("待处理问题", f"{total_open}")
+    k2.metric("不复权问题", f"{raw_open}")
+    k3.metric("前复权问题", f"{qfq_open}")
+    k4.metric("价格异常", f"{price_open}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    ca, cb = st.columns([1, 1.2])
+
+    with ca:
+        with st.container(border=True):
+            st.caption("分类统计")
+            try:
+                summary = get_quality_issue_summary()
+                if summary["total_open_issues"]:
+                    rows = "<br>".join(
+                        f'<span style="color:#c8d0e0;font-size:0.78rem;">'
+                        f'{_ISSUE_TYPE_CN.get(r["issue_type"], r["issue_type"])} '
+                        f'({_ADJ_CN.get(r["adj_type"], r["adj_type"])}) : '
+                        f'{r["issue_count"]}</span>'
+                        for r in summary["by_type_adj"]
+                    )
+                    st.markdown(rows, unsafe_allow_html=True)
+                else:
+                    st.markdown("暂无未处理问题")
+            except Exception:
+                st.markdown("暂无数据")
+
+        with st.expander("命令"):
+            st.code(
+                "python -m src.data_quality.quality_report --adj raw --limit 5\n"
+                "python -m src.data_quality.quality_report --adj qfq --limit 5\n"
+                "python -m src.data_quality.quality_report --adj all --limit 20\n"
+                "python -m src.data_quality.quality_report --stock-code 000001 --adj raw\n"
+                "python -m src.data_quality.quality_report --adj all --no-write",
+                language="bash",
+            )
+
+    with cb:
+        with st.container(border=True):
+            st.caption("最近问题")
+            try:
+                issues = get_recent_quality_issues(limit=20)
+                if not issues.empty:
+                    display_cols = [
+                        "stock_code", "check_date", "issue_type",
+                        "issue_level", "adj_type", "issue_detail",
+                    ]
+                    display_cols = [c for c in display_cols if c in issues.columns]
+                    display_df = issues[display_cols].copy()
+                    display_df["issue_type"] = display_df["issue_type"].map(_ISSUE_TYPE_CN).fillna(display_df["issue_type"])
+                    display_df["issue_level"] = display_df["issue_level"].map(_ISSUE_LEVEL_CN).fillna(display_df["issue_level"])
+                    display_df["adj_type"] = display_df["adj_type"].map(_ADJ_CN).fillna(display_df["adj_type"])
+                    display_df = display_df.rename(columns={k: v for k, v in _COL_CN.items() if k in display_df.columns})
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True, height=320,
+                        key="df_quality_issues",
+                        selection_mode="single-row",
+                        on_select="ignore",
+                    )
+                else:
+                    st.markdown("暂无质量问题记录")
+            except Exception as e:
+                st.markdown(f"加载失败：{e}")

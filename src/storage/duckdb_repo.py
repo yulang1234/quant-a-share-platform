@@ -65,6 +65,7 @@ def init_database(db_path: Path | None = None) -> None:
 
     for ddl in CREATE_TABLE_SQL:
         con.execute(ddl)
+    _migrate_data_quality_report_if_needed(con)
     logger.info("Database initialised (%d tables).", len(CREATE_TABLE_SQL))
 
 
@@ -323,3 +324,146 @@ def count_daily_records(table_name: str, stock_code: str | None = None) -> int:
             f"SELECT COUNT(*) FROM {table_name}"
         ).fetchone()
     return int(result[0]) if result else 0
+
+
+# ── Data-quality helpers ────────────────────────────────────────────────
+
+_QUALITY_REPORT_TABLE = "data_quality_report"
+
+
+def _migrate_data_quality_report_if_needed(con: duckdb.DuckDBPyConnection) -> None:
+    """Add ``adj_type`` column to ``data_quality_report`` if it is missing.
+
+    The column was introduced in V0.5.  Existing tables created by V0.4 or
+    earlier do not have it, so we ALTER TABLE to keep the schema compatible
+    without losing previously stored rows.
+    """
+    if not _table_exists(con, _QUALITY_REPORT_TABLE):
+        return
+    cols = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?",
+        [_QUALITY_REPORT_TABLE],
+    ).fetchdf()["column_name"].tolist()
+    if "adj_type" not in cols:
+        con.execute(
+            f"ALTER TABLE {_QUALITY_REPORT_TABLE} ADD COLUMN adj_type VARCHAR(8)"
+        )
+        logger.info("Migrated %s: added adj_type column.", _QUALITY_REPORT_TABLE)
+
+
+def _column_exists(
+    con: duckdb.DuckDBPyConnection, table_name: str, column_name: str
+) -> bool:
+    """Return True if *column_name* exists in *table_name*."""
+    r = con.execute(
+        "SELECT COUNT(*) FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ? AND column_name = ?",
+        [table_name, column_name],
+    ).fetchone()
+    return r is not None and r[0] > 0
+
+
+def insert_quality_report(df: pd.DataFrame) -> int:
+    """Insert quality-check issues into ``data_quality_report``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must contain at least ``stock_code``, ``check_date``,
+        ``issue_type``, ``issue_level``, ``issue_detail`` and ``adj_type``.
+
+    Returns
+    -------
+    int
+        Number of rows inserted.
+    """
+    if df is None or df.empty:
+        return 0
+
+    con = get_connection()
+
+    # Compute sequential IDs starting after the current maximum.
+    max_id = con.execute(
+        f"SELECT COALESCE(MAX(id), 0) FROM {_QUALITY_REPORT_TABLE}"
+    ).fetchone()[0]
+    df = df.copy()
+    df["id"] = range(max_id + 1, max_id + 1 + len(df))
+
+    if "status" not in df.columns:
+        df["status"] = "open"
+    if "created_at" not in df.columns:
+        df["created_at"] = pd.Timestamp.now()
+
+    # Keep only columns that exist in the target table.
+    table_cols = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?",
+        [_QUALITY_REPORT_TABLE],
+    ).fetchdf()["column_name"].tolist()
+    insert_cols = [c for c in df.columns if c in table_cols]
+    df_out = df[insert_cols]
+
+    cols = ", ".join(insert_cols)
+    con.execute(f"INSERT INTO {_QUALITY_REPORT_TABLE} ({cols}) SELECT * FROM df_out")
+    logger.info("Inserted %d rows into %s.", len(df_out), _QUALITY_REPORT_TABLE)
+    return len(df_out)
+
+
+def count_quality_issues(
+    issue_type: str | None = None,
+    stock_code: str | None = None,
+    adj_type: str | None = None,
+    status: str | None = None,
+) -> int:
+    """Count rows in ``data_quality_report`` with optional filters."""
+    con = get_connection()
+    conditions: list[str] = []
+    params: list[Any] = []
+    if issue_type:
+        conditions.append("issue_type = ?")
+        params.append(issue_type)
+    if stock_code:
+        conditions.append("stock_code = ?")
+        params.append(stock_code)
+    if adj_type:
+        conditions.append("adj_type = ?")
+        params.append(adj_type)
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+
+    where = " AND ".join(conditions) if conditions else "1=1"
+    result = con.execute(
+        f"SELECT COUNT(*) FROM {_QUALITY_REPORT_TABLE} WHERE {where}",
+        params,
+    ).fetchone()
+    return int(result[0]) if result else 0
+
+
+def query_daily_data(table_name: str, stock_code: str | None = None) -> pd.DataFrame:
+    """Return all rows from a daily-data table, optionally filtered by stock.
+
+    Parameters
+    ----------
+    table_name : str
+        ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    stock_code : str, optional
+        6-digit stock code.
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    if table_name not in _DAILY_TABLES:
+        raise ValueError(
+            f"table_name must be one of {sorted(_DAILY_TABLES)}, "
+            f"got '{table_name}'"
+        )
+    con = get_connection()
+    if stock_code:
+        return con.execute(
+            f"SELECT * FROM {table_name} WHERE stock_code = ? ORDER BY trade_date",
+            [stock_code],
+        ).fetchdf()
+    return con.execute(f"SELECT * FROM {table_name} ORDER BY stock_code, trade_date").fetchdf()

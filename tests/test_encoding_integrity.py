@@ -101,6 +101,10 @@ _SOURCE_FILES = [
     "main.py",
     "ui/streamlit_app.py",
     "src/universe/stock_pool.py",
+    "src/data_quality/duplicate_checker.py",
+    "src/data_quality/missing_date_checker.py",
+    "src/data_quality/price_checker.py",
+    "src/data_quality/quality_report.py",
     "README.md",
     "docs/roadmap.md",
 ]
