@@ -168,10 +168,78 @@ def insert_df(table_name: str, df: pd.DataFrame) -> int:
     Returns
     -------
     int
-        Number of rows inserted.
+        Number of rows inserted (0 if df is empty).
     """
+    if df is None or df.empty:
+        logger.debug("Empty DataFrame — nothing inserted into %s.", table_name)
+        return 0
+
     con = get_connection()
     columns = ", ".join(df.columns)
     con.execute(f"INSERT INTO {table_name} ({columns}) SELECT * FROM df")
     logger.debug("Inserted %d rows into %s.", len(df), table_name)
     return len(df)
+
+
+def upsert_daily_data(table_name: str, df: pd.DataFrame) -> int:
+    """Upsert daily price data into *table_name*.
+
+    Uses a delete-then-insert strategy for reliability:
+      1. Delete existing rows where ``(stock_code, trade_date)`` matches
+         any row in *df*.
+      2. Insert new rows.
+
+    Parameters
+    ----------
+    table_name : str
+        One of ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    df : pd.DataFrame
+        Must contain at least ``stock_code`` and ``trade_date`` columns.
+
+    Returns
+    -------
+    int
+        Number of rows inserted.
+    """
+    if df is None or df.empty:
+        return 0
+
+    con = get_connection()
+
+    # Match DataFrame columns to the target table's schema
+    table_cols = con.execute(
+        f"SELECT column_name FROM information_schema.columns "
+        f"WHERE table_schema = 'main' AND table_name = ?",
+        [table_name],
+    ).fetchdf()["column_name"].tolist()
+    insert_cols = [c for c in df.columns if c in table_cols]
+    if not insert_cols:
+        logger.warning("No matching columns for %s — skipping insert.", table_name)
+        return 0
+    df_filtered = df[insert_cols]
+
+    # Temp table for set-based operations
+    temp_name = f"__upsert_temp_{table_name}__"
+    con.execute(f"DROP TABLE IF EXISTS {temp_name}")
+    con.execute(f"CREATE TEMPORARY TABLE {temp_name} AS SELECT * FROM df_filtered")
+
+    # Delete existing rows that overlap with the incoming data
+    con.execute(f"""
+        DELETE FROM {table_name}
+        WHERE (stock_code, trade_date) IN (
+            SELECT stock_code, trade_date FROM {temp_name}
+        )
+    """)
+
+    # Insert new data
+    cols = ", ".join(insert_cols)
+    con.execute(f"INSERT INTO {table_name} ({cols}) SELECT * FROM {temp_name}")
+    inserted = len(df_filtered)
+
+    con.execute(f"DROP TABLE IF EXISTS {temp_name}")
+
+    logger.debug(
+        "Upserted %d rows into %s (deleted overlapping first).",
+        inserted, table_name,
+    )
+    return inserted

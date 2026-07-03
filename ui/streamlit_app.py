@@ -9,7 +9,7 @@ Run with::
 import pandas as pd
 import streamlit as st
 
-from src.storage.duckdb_repo import init_database
+from src.storage.duckdb_repo import init_database, query_df
 from src.universe.stock_pool import (
     activate_stock,
     add_stock_to_pool,
@@ -60,10 +60,11 @@ st.markdown("**A股 500 支核心股票池量化研究平台**")
 init_database()
 
 # ── Tab navigation ──────────────────────────────────────────────────────
-tab_overview, tab_pool_mgmt, tab_filters = st.tabs([
+tab_overview, tab_pool_mgmt, tab_filters, tab_hist_data = st.tabs([
     "📊 项目概览",
     "📂 股票池管理",
     "🔍 过滤测试",
+    "📜 历史数据初始化",
 ])
 
 # =====================================================================
@@ -72,17 +73,17 @@ tab_overview, tab_pool_mgmt, tab_filters = st.tabs([
 with tab_overview:
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("当前版本", "V0.2")
-        st.caption("股票池管理")
+        st.metric("当前版本", "V0.3")
+        st.caption("20 年历史数据初始化")
     with col2:
-        st.metric("当前阶段", "股票池管理")
-        st.caption("已完成：导入 / 查询 / 启用 / 停用 / 黑名单")
+        st.metric("当前阶段", "历史数据初始化")
+        st.caption("已完成：股票池管理 + 历史数据拉取")
 
     st.divider()
     st.subheader("后续模块入口")
     modules = [
-        "股票池管理",
-        "历史数据初始化",
+        "股票池管理 ✅",
+        "历史数据初始化 ✅",
         "每日增量更新",
         "数据质量检查",
         "因子分析",
@@ -321,3 +322,82 @@ with tab_filters:
             "💡 后续版本 (V0.3+) 会在 stock_basic 表中增加 "
             "`list_date`、`amount_mean_20`、`status` 字段，届时过滤器将全面生效。"
         )
+
+
+# =====================================================================
+#  TAB 4 — 历史数据初始化
+# =====================================================================
+with tab_hist_data:
+    st.subheader("📜 历史数据初始化 (V0.3)")
+
+    st.markdown("""
+    本页面展示历史数据初始化的状态。
+    **当前版本不提供从页面直接拉取 500 支全量数据的功能**（避免 Streamlit 阻塞）。
+
+    如需拉取数据，请在命令行中运行：
+    """)
+
+    st.code(
+        "# 小批量测试 (2 支股票, raw + qfq)\n"
+        "python -m src.data_update.historical_loader --pool core_500 --limit 2 --adj all\n\n"
+        "# 拉取不复权数据\n"
+        "python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj raw\n\n"
+        "# 拉取前复权数据\n"
+        "python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj qfq\n\n"
+        "# 重试失败任务\n"
+        "python -m src.data_update.retry_failed --limit 5\n",
+        language="bash",
+    )
+
+    st.divider()
+
+    # ── Data table row counts ─────────────────────────────────────────
+    st.subheader("📊 数据表行数")
+
+    try:
+        raw_count = query_df("SELECT COUNT(*) AS cnt FROM stock_daily_raw").iloc[0]["cnt"]
+        qfq_count = query_df("SELECT COUNT(*) AS cnt FROM stock_daily_qfq").iloc[0]["cnt"]
+        log_count = query_df("SELECT COUNT(*) AS cnt FROM data_update_log").iloc[0]["cnt"]
+
+        col_r1, col_r2, col_r3 = st.columns(3)
+        col_r1.metric("stock_daily_raw 行数", f"{raw_count:,}")
+        col_r2.metric("stock_daily_qfq 行数", f"{qfq_count:,}")
+        col_r3.metric("data_update_log 行数", f"{log_count:,}")
+    except Exception as e:
+        st.warning(f"查询数据表行数失败: {e}")
+
+    # ── Update summary ────────────────────────────────────────────────
+    st.divider()
+    st.subheader("📋 更新日志汇总")
+
+    try:
+        from src.data_update.update_log import get_update_summary
+        summary = get_update_summary(task_type="historical_load")
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        col_s1.metric("✅ Success", summary["success"])
+        col_s2.metric("❌ Failed", summary["failed"])
+        col_s3.metric("○ Empty", summary["empty"])
+        col_s4.metric("⏭️ Skipped", summary["skipped"])
+    except Exception as e:
+        st.warning(f"查询更新日志汇总失败: {e}")
+
+    # ── Recent logs ───────────────────────────────────────────────────
+    st.divider()
+    st.subheader("🕐 最近更新日志 (最近 100 条)")
+
+    try:
+        from src.data_update.update_log import get_recent_update_logs
+        logs = get_recent_update_logs(limit=100)
+        if logs.empty:
+            st.info("暂无更新日志。请先运行历史数据拉取命令。")
+        else:
+            # Format for display
+            display_logs = logs.copy()
+            if "started_at" in display_logs.columns:
+                display_logs["started_at"] = pd.to_datetime(display_logs["started_at"]).dt.strftime("%Y-%m-%d %H:%M")
+            if "finished_at" in display_logs.columns:
+                display_logs["finished_at"] = pd.to_datetime(display_logs["finished_at"]).dt.strftime("%Y-%m-%d %H:%M")
+
+            st.dataframe(display_logs, use_container_width=True, height=400)
+    except Exception as e:
+        st.warning(f"查询更新日志失败: {e}")
