@@ -339,6 +339,77 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (stock_code, trade_date, factor_name, universe_name)
     );
     """,
+    # 19. Forward returns for factor effectiveness (V0.9)
+    """
+    CREATE TABLE IF NOT EXISTS factor_forward_returns (
+        stock_code      VARCHAR(6)   NOT NULL,
+        trade_date      DATE         NOT NULL,
+        forward_days    INTEGER      NOT NULL,
+        close           DOUBLE,
+        future_close    DOUBLE,
+        forward_return  DOUBLE,
+        created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (stock_code, trade_date, forward_days)
+    );
+    """,
+    # 20. Factor IC report (V0.9)
+    """
+    CREATE TABLE IF NOT EXISTS factor_ic_report (
+        factor_name     VARCHAR(64)  NOT NULL,
+        trade_date      DATE         NOT NULL,
+        forward_days    INTEGER      NOT NULL,
+        ic              DOUBLE,
+        rank_ic         DOUBLE,
+        sample_count    BIGINT,
+        universe_name   VARCHAR(64) DEFAULT 'core_500',
+        created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (factor_name, trade_date, forward_days, universe_name)
+    );
+    """,
+    # 21. Factor group return report (V0.9)
+    """
+    CREATE TABLE IF NOT EXISTS factor_group_return_report (
+        factor_name         VARCHAR(64)  NOT NULL,
+        trade_date          DATE         NOT NULL,
+        forward_days        INTEGER      NOT NULL,
+        group_id            INTEGER      NOT NULL,
+        group_count         INTEGER,
+        avg_forward_return  DOUBLE,
+        median_forward_return DOUBLE,
+        stock_count         BIGINT,
+        universe_name       VARCHAR(64) DEFAULT 'core_500',
+        created_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (factor_name, trade_date, forward_days, group_id, universe_name)
+    );
+    """,
+    # 22. Factor analysis summary (V0.9)
+    """
+    CREATE TABLE IF NOT EXISTS factor_analysis_summary (
+        factor_name             VARCHAR(64)  NOT NULL,
+        forward_days            INTEGER      NOT NULL,
+        start_date              DATE,
+        end_date                DATE,
+        avg_ic                  DOUBLE,
+        avg_rank_ic             DOUBLE,
+        ic_std                  DOUBLE,
+        rank_ic_std             DOUBLE,
+        ic_ir                   DOUBLE,
+        rank_ic_ir              DOUBLE,
+        positive_ic_ratio       DOUBLE,
+        positive_rank_ic_ratio  DOUBLE,
+        avg_top_group_return    DOUBLE,
+        avg_bottom_group_return DOUBLE,
+        avg_group_spread        DOUBLE,
+        trade_date_count        BIGINT,
+        universe_name           VARCHAR(64) DEFAULT 'core_500',
+        created_at              TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at              TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (factor_name, forward_days, start_date, end_date, universe_name)
+    );
+    """,
 ]
 
 

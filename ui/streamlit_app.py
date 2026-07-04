@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -357,7 +357,7 @@ with t_overview:
             '<div style="display:flex;gap:0.5rem;justify-content:flex-end;'
             'align-items:center;padding-top:0.55rem;">'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
-            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.8.0</span>'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.9.0</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
             'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">开发环境</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
@@ -1154,5 +1154,49 @@ with t_ranks:
             "python -m src.factor_rank.run_factor_ranking --trade-date 20260703\n\n"
             "# 指定日期范围\n"
             "python -m src.factor_rank.run_factor_ranking --start-date 20260101 --end-date 20260703 --limit 5",
+            language="bash",
+        )
+
+# ======================================================================
+#  TAB: 因子有效性 (V0.9)
+# ======================================================================
+
+with t_analysis:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        'V0.9 因子有效性分析 -- IC/RankIC/分组收益/汇总报告。</div>',
+        unsafe_allow_html=True,
+    )
+
+    try:
+        from src.storage.duckdb_repo import fetch_analysis_summary, query_df
+        s = fetch_analysis_summary(limit=20)
+        total = query_df("SELECT COUNT(*) AS c FROM factor_analysis_summary")
+        total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
+        facs = query_df("SELECT COUNT(DISTINCT factor_name) AS c FROM factor_analysis_summary")
+        factor_count = int(facs.iloc[0]["c"]) if not facs.empty else 0
+    except Exception:
+        s = pd.DataFrame(); total_rows = factor_count = 0
+
+    k1, k2 = st.columns(2)
+    k1.metric("汇总报告数", total_rows)
+    k2.metric("已分析因子数", factor_count)
+
+    if not s.empty:
+        st.caption("分析汇总（按 avg_rank_ic 排序）")
+        dc = [c for c in ["factor_name", "forward_days", "avg_ic", "avg_rank_ic", "ic_ir", "avg_group_spread", "trade_date_count"] if c in s.columns]
+        st.dataframe(s[dc].sort_values("avg_rank_ic", ascending=False).head(20) if "avg_rank_ic" in dc else s[dc].head(20),
+                     use_container_width=True, height=300, key="df_analysis_summary", selection_mode="single-row", on_select="ignore")
+    else:
+        st.info("暂无分析数据。")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "# 小批量因子有效性分析\n"
+            "python -m src.factor_analysis.run_factor_analysis --pool core_500 --limit 5\n\n"
+            "# 指定因子分析\n"
+            "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --forward-days 5 --limit 5\n\n"
+            "# 指定日期范围和未来收益周期\n"
+            "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --start-date 20200101 --end-date 20231231 --forward-days 10",
             language="bash",
         )

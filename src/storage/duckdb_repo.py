@@ -860,3 +860,84 @@ def fetch_factor_rankings(
         return query_df(sql, params)
     except Exception:
         return pd.DataFrame()
+
+
+# ── V0.9 factor analysis helpers ──────────────────────────────────────────
+
+def _generic_upsert(table: str, pk_cols: list[str], df: pd.DataFrame) -> int:
+    """Upsert *df* into *table*, keyed by *pk_cols*."""
+    if df is None or df.empty:
+        return 0
+    con = get_connection()
+    if "stock_code" in df.columns:
+        df = df.copy()
+        df["stock_code"] = df["stock_code"].astype(str).str.zfill(6)
+
+    table_cols = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?", [table],
+    ).fetchdf()["column_name"].tolist()
+    insert_cols = [c for c in df.columns if c in table_cols]
+    if not insert_cols:
+        return 0
+    df_out = df[insert_cols]
+
+    temp = f"__upsert_{table}__"
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    con.execute(f"CREATE TEMPORARY TABLE {temp} AS SELECT * FROM df_out")
+    pk_clause = " AND ".join(f"t.{c} = s.{c}" for c in pk_cols if c in insert_cols)
+    con.execute(f"DELETE FROM {table} t WHERE EXISTS (SELECT 1 FROM {temp} s WHERE {pk_clause})")
+    cols = ", ".join(insert_cols)
+    con.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM {temp}")
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    return len(df_out)
+
+
+def _generic_fetch(table: str, filters: dict, limit: int | None = None) -> pd.DataFrame:
+    """Fetch from *table* with optional equality filters."""
+    try:
+        conds: list[str] = []
+        params: list[Any] = []
+        for col, val in filters.items():
+            if val is not None:
+                conds.append(f"{col} = ?")
+                params.append(val)
+        where = " AND ".join(conds) if conds else "1=1"
+        sql = f"SELECT * FROM {table} WHERE {where} ORDER BY trade_date, factor_name"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        return query_df(sql, params)
+    except Exception:
+        return pd.DataFrame()
+
+
+def upsert_forward_returns(df: pd.DataFrame) -> int:
+    return _generic_upsert("factor_forward_returns", ["stock_code", "trade_date", "forward_days"], df)
+
+
+def fetch_forward_returns(stock_code=None, start_date=None, end_date=None, forward_days=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("factor_forward_returns", {"stock_code": stock_code, "forward_days": forward_days}, limit)
+
+
+def upsert_ic_report(df: pd.DataFrame) -> int:
+    return _generic_upsert("factor_ic_report", ["factor_name", "trade_date", "forward_days", "universe_name"], df)
+
+
+def fetch_ic_report(factor_name=None, start_date=None, end_date=None, forward_days=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("factor_ic_report", {"factor_name": factor_name, "forward_days": forward_days}, limit)
+
+
+def upsert_group_return_report(df: pd.DataFrame) -> int:
+    return _generic_upsert("factor_group_return_report", ["factor_name", "trade_date", "forward_days", "group_id", "universe_name"], df)
+
+
+def fetch_group_return_report(factor_name=None, start_date=None, end_date=None, forward_days=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("factor_group_return_report", {"factor_name": factor_name, "forward_days": forward_days}, limit)
+
+
+def upsert_analysis_summary(df: pd.DataFrame) -> int:
+    return _generic_upsert("factor_analysis_summary", ["factor_name", "forward_days", "start_date", "end_date", "universe_name"], df)
+
+
+def fetch_analysis_summary(factor_name=None, forward_days=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("factor_analysis_summary", {"factor_name": factor_name, "forward_days": forward_days}, limit)

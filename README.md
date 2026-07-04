@@ -17,6 +17,28 @@
 - V0.6 数据修复与重跑：完成
 - V0.7 基础因子计算：完成
 - V0.8 因子标准化与排名：完成
+- V0.9 因子有效性分析：完成
+
+## V0.9 已完成内容
+
+V0.9 基于 V0.7 因子数据与 V0.8 排名数据，进行 IC/RankIC/分组收益/有效性汇总。
+
+### 因子有效性分析
+```bash
+# 小批量因子有效性分析
+python -m src.factor_analysis.run_factor_analysis --pool core_500 --limit 5
+
+# 指定因子分析
+python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --forward-days 5 --limit 5
+
+# 指定日期范围和未来收益周期
+python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --start-date 20200101 --end-date 20231231 --forward-days 10
+```
+
+说明：V0.9 只做因子有效性分析 / V1.0 才做 TopK 选股 / 不调用 AkShare / 不写 Parquet / 不修改原始数据
+
+### 测试
+- pytest: 467 passed（含 V0.9 分析测试）
 
 ## V0.8 已完成内容
 
@@ -484,8 +506,9 @@ quant-a-share-platform/
 - V0.6 数据修复与重跑 [完成]
 - V0.7 基础因子计算 [完成]
 - V0.8 因子标准化与排名 [完成]
-- V0.9 因子有效性分析 [下一步]
-- V1.0 TopK 选股策略 [规划中]
+- V0.9 因子有效性分析 [完成]
+- V1.0 TopK 选股策略 [下一步]
+- V1.1 基础回测引擎 [规划中]
 
 ## 免责声明
 
