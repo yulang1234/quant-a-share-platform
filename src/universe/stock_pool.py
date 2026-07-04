@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # ── Constants ───────────────────────────────────────────────────────────
 REQUIRED_CSV_FIELDS = {"stock_code", "stock_name"}
 DEFAULT_POOL = "core_500"
+_OVERRIDES_PATH = get_stock_pool_path().parent / "sector_overrides.csv"
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -182,6 +183,7 @@ def load_stock_pool_from_csv(csv_path: str | Path | None = None) -> pd.DataFrame
         "is_active": True,
         "is_blacklisted": False,
         "note": "",
+        "sector": "",
     }
     for col, default_val in defaults.items():
         if col not in raw.columns:
@@ -194,6 +196,16 @@ def load_stock_pool_from_csv(csv_path: str | Path | None = None) -> pd.DataFrame
     for col in ("is_active", "is_blacklisted"):
         if col in raw.columns:
             raw[col] = raw[col].apply(_normalise_bool)
+
+    # ── Backfill sector from note (idempotent) ───────────────────────
+    # If sector is empty but note contains industry/sector labels (the
+    # historical convention), copy them over.  Do NOT clear note.
+    empty_sector = raw["sector"].isna() | (raw["sector"].astype(str).str.strip() == "")
+    note_has_value = raw["note"].notna() & (raw["note"].astype(str).str.strip() != "")
+    mask = empty_sector & note_has_value
+    if mask.any():
+        raw.loc[mask, "sector"] = raw.loc[mask, "note"]
+        logger.info("Backfilled sector from note for %d rows.", mask.sum())
 
     # ── Drop duplicates (stock_code + pool_name) ─────────────────────
     before = len(raw)
@@ -249,12 +261,13 @@ def save_stock_pool_to_db(df: pd.DataFrame) -> dict[str, int]:
         row_active = _normalise_bool(row.get("is_active", True))
         row_blacklisted = _normalise_bool(row.get("is_blacklisted", False))
         row_note = str(row.get("note", ""))
+        row_sector = str(row.get("sector", ""))
 
         if existing:
             # Read current row to detect true changes
             cur = con.execute(
                 "SELECT stock_name, market, exchange, source, "
-                "       is_active, is_blacklisted, note "
+                "       is_active, is_blacklisted, note, sector "
                 "FROM stock_pool WHERE stock_code = ? AND pool_name = ?",
                 [code, pool],
             ).fetchone()
@@ -264,7 +277,8 @@ def save_stock_pool_to_db(df: pd.DataFrame) -> dict[str, int]:
                     and cur[2] == row_exchange and cur[3] == row_source
                     and bool(cur[4]) == row_active
                     and bool(cur[5]) == row_blacklisted
-                    and cur[6] == row_note):
+                    and cur[6] == row_note
+                    and cur[7] == row_sector):
                 skipped += 1
                 continue
 
@@ -278,11 +292,12 @@ def save_stock_pool_to_db(df: pd.DataFrame) -> dict[str, int]:
                     is_active      = ?,
                     is_blacklisted = ?,
                     note           = ?,
+                    sector         = ?,
                     updated_at     = ?
                 WHERE stock_code = ? AND pool_name = ?
                 """,
                 [row_name, row_market, row_exchange, row_source,
-                 row_active, row_blacklisted, row_note,
+                 row_active, row_blacklisted, row_note, row_sector,
                  now, code, pool],
             )
             updated += 1
@@ -291,11 +306,11 @@ def save_stock_pool_to_db(df: pd.DataFrame) -> dict[str, int]:
                 """
                 INSERT INTO stock_pool
                     (stock_code, stock_name, market, exchange, pool_name,
-                     source, is_active, is_blacklisted, note, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source, is_active, is_blacklisted, note, sector, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [code, row_name, row_market, row_exchange, pool,
-                 row_source, row_active, row_blacklisted, row_note,
+                 row_source, row_active, row_blacklisted, row_note, row_sector,
                  now, now],
             )
             inserted += 1
@@ -377,6 +392,173 @@ def get_active_stock_pool(pool_name: str = DEFAULT_POOL) -> pd.DataFrame:
     return df
 
 
+def resolve_stock_sector(stock_code: str, stock_name: str = "") -> dict[str, str]:
+    """Resolve sector/industry for a stock from all available sources.
+
+    Priority (first non-empty wins):
+    1. Local DuckDB ``stock_pool.sector``
+    2. ``sector_overrides.csv`` (manual overrides)
+    3. ``core_500.csv`` ``sector`` column
+    4. ``core_500.csv`` ``note`` column (historical convention)
+    5. AkShare East Money ``stock_individual_info_em``
+    6. AkShare CNINFO ``stock_industry_category_cninfo``
+    7. AkShare THS (同花顺) industry boards (cached)
+    8. Tushare (optional, requires ``TUSHARE_TOKEN`` env var)
+
+    Parameters
+    ----------
+    stock_code : str
+        6-digit code (will be validated).
+    stock_name : str, optional
+        Hint for THS matching.
+
+    Returns
+    -------
+    dict
+        ``{"sector": str, "sector_source": str}``.
+    """
+    code = validate_stock_code(stock_code)
+    result: dict[str, str] = {"sector": "", "sector_source": "empty"}
+    _no_val = {"", "nan", "none", "None"}
+
+    # ── 1. DuckDB ──────────────────────────────────────────────────────
+    try:
+        row = query_df(
+            "SELECT sector FROM stock_pool WHERE stock_code = ? LIMIT 1", [code]
+        )
+        if not row.empty:
+            sec = str(row.iloc[0].get("sector") or "").strip()
+            if sec and sec not in _no_val:
+                result["sector"] = sec
+                result["sector_source"] = "local_db"
+                return result
+    except Exception:
+        logger.debug("resolve_sector: DuckDB failed for %s", code, exc_info=True)
+
+    # ── 2. sector_overrides.csv ────────────────────────────────────────
+    try:
+        if _OVERRIDES_PATH.exists():
+            overrides = pd.read_csv(_OVERRIDES_PATH, dtype={"stock_code": str})
+            overrides["stock_code"] = overrides["stock_code"].astype(str).str.zfill(6)
+            match = overrides[overrides["stock_code"] == code]
+            if not match.empty:
+                s = str(match.iloc[0].get("sector", "")).strip()
+                if s and s not in _no_val:
+                    result["sector"] = s
+                    result["sector_source"] = "local_override"
+                    return result
+    except Exception:
+        logger.debug("resolve_sector: overrides failed for %s", code, exc_info=True)
+
+    # ── 3-4. core_500.csv ─────────────────────────────────────────────
+    try:
+        csv_path = get_stock_pool_path()
+        if csv_path.exists():
+            raw = pd.read_csv(csv_path, dtype={"stock_code": str})
+            raw["stock_code"] = raw["stock_code"].astype(str).str.zfill(6)
+            match = raw[raw["stock_code"] == code]
+            if not match.empty:
+                r = match.iloc[0]
+                s = str(r.get("sector", "")).strip()
+                if s and s not in _no_val:
+                    result["sector"] = s
+                    result["sector_source"] = "local_csv_sector"
+                    return result
+                n = str(r.get("note", "")).strip()
+                if n and n not in _no_val:
+                    result["sector"] = n
+                    result["sector_source"] = "local_csv_note"
+                    return result
+    except Exception:
+        logger.debug("resolve_sector: CSV failed for %s", code, exc_info=True)
+
+    # ── 5-8. Remote APIs ───────────────────────────────────────────────
+    try:
+        from src.data_source.akshare_client import AkShareClient  # noqa: F811
+        sector, source = AkShareClient.resolve_sector_remote(code, stock_name)
+        if sector:
+            result["sector"] = sector
+            result["sector_source"] = source
+    except Exception:
+        logger.debug("resolve_sector: remote failed for %s", code, exc_info=True)
+
+    return result
+
+
+def lookup_stock_info(stock_code: str) -> dict[str, str]:
+    """Resolve stock name / exchange / sector from local data, then AkShare.
+
+    Priority chain:
+    1. DuckDB ``stock_pool`` table
+    2. ``core_500.csv`` file
+    3. AkShare ``get_stock_basic_info()``
+    4. Exchange always inferred from code via :func:`infer_exchange`
+    5. Sector resolved via :func:`resolve_stock_sector`
+
+    Returns
+    -------
+    dict
+        ``{"stock_code", "stock_name", "exchange", "sector", "sector_source"}``.
+        Empty strings where data is unavailable.  Never raises.
+    """
+    code = validate_stock_code(stock_code)
+    result: dict[str, str] = {
+        "stock_code": code,
+        "stock_name": "",
+        "exchange": infer_exchange(code),
+        "sector": "",
+        "sector_source": "empty",
+    }
+
+    # ── 1. DuckDB ──────────────────────────────────────────────────────
+    try:
+        row = query_df(
+            "SELECT stock_name FROM stock_pool WHERE stock_code = ? LIMIT 1",
+            [code],
+        )
+        if not row.empty:
+            name = str(row.iloc[0].get("stock_name") or "")
+            if name and name != "待补充":
+                result["stock_name"] = name
+    except Exception:
+        pass
+
+    # ── 2. CSV  ────────────────────────────────────────────────────────
+    try:
+        csv_path = get_stock_pool_path()
+        if csv_path.exists():
+            raw = pd.read_csv(csv_path, dtype={"stock_code": str})
+            raw["stock_code"] = raw["stock_code"].astype(str).str.zfill(6)
+            match = raw[raw["stock_code"] == code]
+            if not match.empty and not result["stock_name"]:
+                n = str(match.iloc[0].get("stock_name", ""))
+                if n and n != "nan" and n != "待补充":
+                    result["stock_name"] = n
+    except Exception:
+        pass
+
+    # ── 3. AkShare (name) ─────────────────────────────────────────────
+    try:
+        from src.data_source.akshare_client import AkShareClient  # noqa: F811
+        if not result["stock_name"]:
+            remote = AkShareClient.get_stock_basic_info(code)
+            if remote.get("stock_name"):
+                result["stock_name"] = remote["stock_name"]
+    except Exception:
+        logger.debug("AkShare name lookup failed for %s", code, exc_info=True)
+
+    # ── 4. Fallback name ──────────────────────────────────────────────
+    if not result["stock_name"]:
+        result["stock_name"] = "待补充"
+
+    # ── 5. Sector via multi-source resolver ───────────────────────────
+    sector_info = resolve_stock_sector(code, result["stock_name"])
+    result["sector"] = sector_info["sector"]
+    result["sector_source"] = sector_info["sector_source"]
+
+    return result
+
+
 # ======================================================================
 #  4.  Single-stock CRUD
 # ======================================================================
@@ -389,6 +571,7 @@ def add_stock_to_pool(
     pool_name: str = DEFAULT_POOL,
     source: str = "manual",
     note: str = "",
+    sector: str = "",
 ) -> dict[str, Any]:
     """Add a single stock to the pool (or reactivate if already exists).
 
@@ -403,6 +586,8 @@ def add_stock_to_pool(
     pool_name : str, optional
     source : str, optional
     note : str, optional
+    sector : str, optional
+        Industry / sector classification.
 
     Returns
     -------
@@ -426,10 +611,10 @@ def add_stock_to_pool(
             UPDATE stock_pool SET
                 stock_name = ?, market = ?, exchange = ?, source = ?,
                 is_active = TRUE, is_blacklisted = FALSE,
-                note = ?, updated_at = ?
+                note = ?, sector = ?, updated_at = ?
             WHERE stock_code = ? AND pool_name = ?
             """,
-            [stock_name, market, exchange, source, note, now, code, pool_name],
+            [stock_name, market, exchange, source, note, sector, now, code, pool_name],
         )
         action = "updated"
     else:
@@ -437,10 +622,10 @@ def add_stock_to_pool(
             """
             INSERT INTO stock_pool
                 (stock_code, stock_name, market, exchange, pool_name,
-                 source, is_active, is_blacklisted, note, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, TRUE, FALSE, ?, ?, ?)
+                 source, is_active, is_blacklisted, note, sector, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, TRUE, FALSE, ?, ?, ?, ?)
             """,
-            [code, stock_name, market, exchange, pool_name, source, note, now, now],
+            [code, stock_name, market, exchange, pool_name, source, note, sector, now, now],
         )
         action = "inserted"
 
@@ -616,3 +801,112 @@ def _update_status(
     else:
         logger.warning("Stock %s not found in '%s' — no update.", stock_code, pool_name)
     return updated
+
+
+# ======================================================================
+#  5.  Data repair
+# ======================================================================
+
+def repair_stock_pool_data(pool_name: str = DEFAULT_POOL) -> dict[str, int]:
+    """One-shot repair of stock pool records.
+
+    Fixes applied (idempotent — safe to run multiple times):
+
+    1. Backfill empty ``sector`` from ``note`` (historical convention).
+    2. Replace ``None`` / ``"None"`` sector values with ``""``.
+    3. Fix garbled / placeholder stock names via AkShare.
+    4. Repair sectors from all sources via :func:`resolve_stock_sector`.
+
+    Does NOT overwrite user-edited sectors or correct names.
+
+    Parameters
+    ----------
+    pool_name : str
+        Pool to repair.
+
+    Returns
+    -------
+    dict[str, int]
+        ``{"sectors_fixed": int, "names_fixed": int, "names_to_fix": int}``
+    """
+    con = get_connection()
+    result: dict[str, int] = {"sectors_fixed": 0, "names_fixed": 0, "names_to_fix": 0}
+
+    # 1. Backfill sector from note
+    updated = con.execute(
+        "UPDATE stock_pool SET sector = note "
+        "WHERE pool_name = ? "
+        "  AND (sector IS NULL OR sector = '' OR sector = 'None') "
+        "  AND note IS NOT NULL AND note != ''",
+        [pool_name],
+    ).fetchone()
+    if updated:
+        result["sectors_fixed"] = int(updated[0])
+
+    # 2. Clear "None" string values & garbled sector placeholders
+    con.execute(
+        "UPDATE stock_pool SET sector = '' "
+        "WHERE sector IN ('None', 'nan', '<NA>') AND pool_name = ?",
+        [pool_name],
+    )
+
+    # 3. Fix bad stock names via AkShare
+    bad_names = con.execute(
+        "SELECT stock_code, stock_name FROM stock_pool "
+        "WHERE pool_name = ? "
+        "  AND (stock_name = '待补充' OR stock_name IS NULL "
+        "       OR stock_name = '' OR stock_name = 'None')",
+        [pool_name],
+    ).fetchall()
+
+    if bad_names:
+        try:
+            from src.data_source.akshare_client import AkShareClient  # noqa: F811
+            for code, _old_name in bad_names:
+                try:
+                    info = AkShareClient.get_stock_basic_info(code)
+                    new_name = info.get("stock_name", "")
+                    if new_name:
+                        con.execute(
+                            "UPDATE stock_pool SET stock_name = ? "
+                            "WHERE stock_code = ? AND pool_name = ?",
+                            [new_name, str(code), pool_name],
+                        )
+                        result["names_fixed"] += 1
+                        logger.info("Repair: fixed name for %s → %s", code, new_name)
+                except Exception:
+                    logger.debug("Name repair failed for %s", code, exc_info=True)
+        except Exception:
+            logger.debug("AkShare unavailable for name repair", exc_info=True)
+
+    result["names_to_fix"] = len(bad_names) - result["names_fixed"]
+
+    # 4. Repair sectors from all sources for rows still missing sector
+    empty_sectors = con.execute(
+        "SELECT stock_code, stock_name FROM stock_pool "
+        "WHERE pool_name = ? "
+        "  AND (sector IS NULL OR sector = '' OR sector = 'None')",
+        [pool_name],
+    ).fetchall()
+
+    for code, name in empty_sectors:
+        info = resolve_stock_sector(str(code), str(name) if name else "")
+        if info["sector"]:
+            con.execute(
+                "UPDATE stock_pool SET sector = ? WHERE stock_code = ? AND pool_name = ?",
+                [info["sector"], str(code), pool_name],
+            )
+            result["sectors_fixed"] += 1
+            logger.info(
+                "Repair: sector for %s → %s [%s]",
+                code, info["sector"], info["sector_source"],
+            )
+
+    if result["sectors_fixed"]:
+        logger.info("Repair: backfilled %d sectors.", result["sectors_fixed"])
+    if result["names_fixed"]:
+        logger.info("Repair: fixed %d stock names.", result["names_fixed"])
+    if result["names_to_fix"]:
+        logger.info("Repair: %d stocks still need name fix.", result["names_to_fix"])
+
+    return result

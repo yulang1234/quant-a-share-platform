@@ -66,6 +66,7 @@ def init_database(db_path: Path | None = None) -> None:
     for ddl in CREATE_TABLE_SQL:
         con.execute(ddl)
     _migrate_data_quality_report_if_needed(con)
+    _migrate_stock_pool_add_sector(con)
     logger.info("Database initialised (%d tables).", len(CREATE_TABLE_SQL))
 
 
@@ -362,6 +363,41 @@ def _column_exists(
         [table_name, column_name],
     ).fetchone()
     return r is not None and r[0] > 0
+
+
+def _migrate_stock_pool_add_sector(con: duckdb.DuckDBPyConnection) -> None:
+    """Add ``sector`` column to ``stock_pool`` if it is missing.
+
+    The column was introduced in V0.6.  Existing tables created by V0.5 or
+    earlier do not have it, so we ALTER TABLE to keep the schema compatible
+    without losing previously stored rows.
+
+    After adding the column, backfill empty ``sector`` values from ``note``
+    for rows where the user had stored industry/sector labels in the note
+    field.  This is **idempotent** — once ``sector`` is non-empty, it will
+    not be overwritten.
+    """
+    if not _table_exists(con, "stock_pool"):
+        return
+
+    added_col = False
+    if not _column_exists(con, "stock_pool", "sector"):
+        con.execute("ALTER TABLE stock_pool ADD COLUMN sector VARCHAR(128)")
+        logger.info("Migrated stock_pool: added sector column.")
+        added_col = True
+
+    # Backfill sector from note for existing rows (idempotent).
+    # Only fills rows where sector is still empty and note has content.
+    updated = con.execute(
+        "UPDATE stock_pool SET sector = note "
+        "WHERE (sector IS NULL OR sector = '') "
+        "  AND note IS NOT NULL AND note != ''"
+    ).fetchone()
+    if updated and updated[0] > 0:
+        logger.info(
+            "Migrated stock_pool: backfilled sector from note for %d rows.",
+            updated[0],
+        )
 
 
 def insert_quality_report(df: pd.DataFrame) -> int:

@@ -21,6 +21,7 @@ CREATE_TABLE_SQL: list[str] = [
         is_active       BOOLEAN      DEFAULT TRUE,
         is_blacklisted  BOOLEAN      DEFAULT FALSE,
         note            VARCHAR(256),
+        sector          VARCHAR(128),
         created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (stock_code, pool_name)

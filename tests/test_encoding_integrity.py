@@ -26,19 +26,19 @@ class TestCsvIntegrity:
     def test_file_exists(self) -> None:
         assert self.CSV_PATH.exists(), f"CSV not found: {self.CSV_PATH}"
 
-    def test_all_rows_have_9_columns(self) -> None:
+    def test_all_rows_have_10_columns(self) -> None:
         with open(self.CSV_PATH, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader)
-            assert len(header) == 9, f"Header has {len(header)} columns, expected 9"
+            assert len(header) == 10, f"Header has {len(header)} columns, expected 10"
             for i, row in enumerate(reader, 2):
-                assert len(row) == 9, \
+                assert len(row) == 10, \
                     f"Row {i} has {len(row)} columns: {row}"
 
     def test_header_names(self) -> None:
         expected = [
             "stock_code", "stock_name", "market", "exchange", "pool_name",
-            "source", "is_active", "is_blacklisted", "note",
+            "source", "is_active", "is_blacklisted", "note", "sector",
         ]
         with open(self.CSV_PATH, "r", encoding="utf-8") as f:
             header = next(csv.reader(f))

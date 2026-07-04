@@ -4,6 +4,7 @@ Streamlit UI for the Quant A-Share Research Platform.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ if str(_proj_root) not in sys.path:
 import pandas as pd
 import streamlit as st
 
+from config.logging_config import setup_logging
 from src.storage.duckdb_repo import init_database, query_df
 from src.universe.stock_pool import (
     activate_stock,
@@ -23,6 +25,7 @@ from src.universe.stock_pool import (
     delete_stock_from_pool,
     get_stock_pool,
     load_stock_pool_from_csv,
+    lookup_stock_info,
     remove_blacklist,
     save_stock_pool_to_db,
     validate_stock_code,
@@ -248,6 +251,7 @@ _COL_CN = {
     "is_active": "状态",
     "is_blacklisted": "黑名单",
     "note": "备注",
+    "sector": "板块/行业",
     "created_at": "创建时间",
     "updated_at": "更新时间",
     "task_type": "任务类型",
@@ -298,12 +302,19 @@ def fmt_pool(df: pd.DataFrame) -> pd.DataFrame:
         d["is_active"] = d["is_active"].apply(lambda x: "启用" if x else "停用")
     if "is_blacklisted" in d.columns:
         d["is_blacklisted"] = d["is_blacklisted"].apply(lambda x: "黑名单" if x else "正常")
+    # Replace None with empty string for display
+    for col in ("note", "sector"):
+        if col in d.columns:
+            d[col] = d[col].fillna("").astype(str)
     return fmt_cols(d)
 
 
 # ======================================================================
 #  Page setup
 # ======================================================================
+
+setup_logging()
+_log = logging.getLogger("streamlit")
 
 st.set_page_config(page_title="Quant A-Share", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(_CSS, unsafe_allow_html=True)
@@ -346,7 +357,7 @@ with t_overview:
             '<div style="display:flex;gap:0.5rem;justify-content:flex-end;'
             'align-items:center;padding-top:0.55rem;">'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
-            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.4</span>'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.5.1</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
             'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">开发环境</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
@@ -506,27 +517,94 @@ with t_pool:
             if st.button("导入股票池", use_container_width=True):
                 try:
                     r = save_stock_pool_to_db(load_stock_pool_from_csv())
+                    _log.info("导入股票池 | inserted=%d updated=%d", r["inserted_count"], r["updated_count"])
                     st.success(f"导入完成：新增 {r['inserted_count']}")
                 except Exception as e:
+                    _log.warning("导入股票池失败 | error=%s", e)
                     st.error(f"导入失败：{e}")
 
             with st.expander("新增股票"):
-                with st.form("add_form", clear_on_submit=True):
-                    c = st.text_input("股票代码", placeholder="000001", key="f_code")
-                    n = st.text_input("股票名称", placeholder="平安银行", key="f_name")
-                    e = st.text_input("交易所", placeholder="留空自动推断", key="f_exch")
-                    nt = st.text_input("备注", placeholder="可选", key="f_note")
-                    if st.form_submit_button("确认新增", use_container_width=True):
-                        try:
-                            code = validate_stock_code(c)
-                            exch = e.strip() if e.strip() else None
-                            r_ = add_stock_to_pool(
-                                stock_code=code, stock_name=n.strip(),
-                                exchange=exch, note=nt.strip(),
+                # ── Simple form: only code + note + button ─────────
+                _F_KEYS = ["f_code", "f_note"]
+
+                if st.session_state.pop("_reset_add_stock_form", False):
+                    for k in _F_KEYS:
+                        st.session_state[k] = ""
+
+                for k in _F_KEYS:
+                    if k not in st.session_state:
+                        st.session_state[k] = ""
+
+                c = st.text_input("股票代码", placeholder="000001 / 688007", key="f_code")
+                nt = st.text_input("备注", placeholder="可选", key="f_note")
+
+                if st.button("确认新增", use_container_width=True):
+                    try:
+                        code = validate_stock_code(c)
+                        note = nt.strip()
+                        info = lookup_stock_info(code)
+                        is_fallback_name = (info["stock_name"] == "待补充")
+                        _log.info(
+                            "新增股票 | code=%s | name=%s | sector=%s | source=%s | fallback=%s",
+                            code, info["stock_name"],
+                            info["sector"] or "(空)", info["sector_source"],
+                            is_fallback_name,
+                        )
+                        r_ = add_stock_to_pool(
+                            stock_code=code,
+                            stock_name=info["stock_name"],
+                            exchange=info["exchange"],
+                            sector=info["sector"],
+                            note=note,
+                        )
+                        _log.info("新增成功 | code=%s | action=%s", code, r_["action"])
+                        st.session_state["_reset_add_stock_form"] = True
+                        # Build success message
+                        name_part = info["stock_name"]
+                        if info["sector"]:
+                            sector_part = f"板块/行业：{info["sector"]}"
+                        else:
+                            sector_part = "板块/行业待补充"
+                        st.session_state["_add_msg"] = (
+                            f"新增成功：{code} {name_part} | {sector_part}"
+                        )
+                        st.rerun()
+                    except Exception as ex:
+                        _log.warning("新增失败 | code=%s | error=%s", c.strip() if c else "", ex)
+                        st.error(str(ex))
+
+                msg = st.session_state.pop("_add_msg", "")
+                if msg:
+                    st.success(msg)
+
+            # ── Batch sector repair button ────────────────────────────
+            with st.expander("批量补齐板块/行业"):
+                if st.button("执行批量补齐", use_container_width=True):
+                    try:
+                        from src.universe.repair_sector import repair_sectors
+                        with st.spinner("正在扫描并补齐板块/行业…"):
+                            result = repair_sectors(dry_run=False)
+                        total = result["total"]
+                        repaired = result["repaired"]
+                        skipped = result["skipped"]
+                        if total == 0:
+                            st.info("所有股票的板块/行业已补齐，无需操作。")
+                        else:
+                            st.success(
+                                f"补齐完成：共 {total} 只待补齐，"
+                                f"成功 {repaired} 只，跳过 {skipped} 只"
                             )
-                            st.success(f"新增成功：{code}")
-                        except Exception as e:
-                            st.error(str(e))
+                        _log.info(
+                            "批量补齐完成 | total=%d repaired=%d skipped=%d",
+                            total, repaired, skipped,
+                        )
+                    except Exception as ex:
+                        msg = str(ex).lower()
+                        if any(s in msg for s in ("cannot open", "being used", "另一个程序")):
+                            st.warning("数据库正被占用，请关闭 Streamlit 后用命令行运行：`python -m src.universe.repair_sector`")
+                        else:
+                            st.error(f"补齐失败：{ex}")
+                        _log.warning("批量补齐失败 | error=%s", ex)
 
         try:
             pool_raw = get_stock_pool(include_inactive=True, include_blacklisted=True)
@@ -611,7 +689,7 @@ with t_pool:
                 if not df_pool.empty:
                     sc = [c for c in [
                         "stock_code", "stock_name", "market", "exchange",
-                        "pool_name", "is_active", "is_blacklisted", "note",
+                        "pool_name", "is_active", "is_blacklisted", "note", "sector",
                     ] if c in df_pool.columns]
                     st.dataframe(
                         fmt_pool(df_pool[sc]),

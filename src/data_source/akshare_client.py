@@ -86,6 +86,277 @@ class AkShareClient:
             raise ValueError(f"Stock code must be 6 digits, got '{stock_code}'")
         return s
 
+    @staticmethod
+    def get_stock_sector(stock_code: str | int) -> str:
+        """Fetch the industry / sector classification for a single A-stock.
+
+        Thin wrapper around :meth:`get_stock_basic_info` — kept for
+        backward compatibility.
+        """
+        return AkShareClient.get_stock_basic_info(stock_code)["sector"]
+
+    @staticmethod
+    def get_stock_basic_info(stock_code: str | int) -> dict[str, str]:
+        """Fetch basic information for a single A-stock from East Money.
+
+        Uses ``ak.stock_individual_info_em()`` to retrieve stock name and
+        industry classification.
+
+        Parameters
+        ----------
+        stock_code : str or int
+            6-digit A-stock code.
+
+        Returns
+        -------
+        dict[str, str]
+            Keys: ``"stock_code"``, ``"stock_name"``, ``"sector"``.
+            Empty strings for any field that cannot be determined.
+            Never raises — all errors are caught and logged.
+        """
+        try:
+            code = AkShareClient.normalize_code(stock_code)
+        except Exception:
+            logger.warning("Invalid stock code for basic info: %s", stock_code)
+            return {"stock_code": "", "stock_name": "", "sector": ""}
+
+        result: dict[str, str] = {
+            "stock_code": code,
+            "stock_name": "",
+            "sector": "",
+        }
+
+        try:
+            ak = AkShareClient._get_akshare_module()
+        except Exception as exc:
+            logger.warning("AkShare import failed for %s: %s", code, exc)
+            return result
+
+        # ── 1. Name via stock_info_a_code_name ──────────────────────────
+        try:
+            names = ak.stock_info_a_code_name()
+            if names is not None and not names.empty:
+                code_col = "code" if "code" in names.columns else "代码" if "代码" in names.columns else ""
+                name_col = "name" if "name" in names.columns else "名称" if "名称" in names.columns else ""
+                if code_col and name_col:
+                    matched = names[names[code_col].astype(str).str.zfill(6) == code]
+                    if not matched.empty:
+                        name = str(matched.iloc[0][name_col]).strip()
+                        if name and name != "nan":
+                            result["stock_name"] = name
+        except Exception:
+            logger.warning("AkShare name lookup failed for %s", code)
+            logger.debug("AkShare name lookup detail:", exc_info=True)
+
+        # ── 2. Sector via stock_individual_info_em ─────────────────────
+        try:
+            df = ak.stock_individual_info_em(symbol=code)
+            if df is not None and not df.empty:
+                if "item" in df.columns and "value" in df.columns:
+                    lookup: dict[str, str] = {}
+                    for _, row in df.iterrows():
+                        key = str(row["item"]).strip()
+                        val = str(row["value"]).strip()
+                        lookup[key] = val
+
+                    for name_key in ("股票简称", "证券简称", "股票名称"):
+                        if (not result["stock_name"]
+                                and name_key in lookup and lookup[name_key]
+                                and lookup[name_key] != "nan"):
+                            result["stock_name"] = lookup[name_key]
+                            break
+
+                    for sector_key in ("行业", "所属行业", "板块"):
+                        if sector_key in lookup and lookup[sector_key] and lookup[sector_key] != "nan":
+                            result["sector"] = lookup[sector_key]
+                            break
+        except Exception:
+            logger.warning("AkShare sector lookup failed for %s", code)
+            logger.debug("AkShare sector lookup detail:", exc_info=True)
+
+        return result
+
+    # -- Sector resolution helpers -------------------------------------------
+
+    # Module-level cache: stock_code (6-digit str) → sector name
+    _ths_sector_cache: dict[str, str] = {}
+    _ths_cache_built: bool = False
+
+    @staticmethod
+    def _resolve_sector_em(code: str) -> str:
+        """Try ``stock_individual_info_em`` (East Money) for sector.
+
+        Returns empty string on any failure."""
+        try:
+            ak = AkShareClient._get_akshare_module()
+            df = ak.stock_individual_info_em(symbol=code)
+            if df is None or df.empty:
+                return ""
+            if "item" not in df.columns or "value" not in df.columns:
+                return ""
+            for _, row in df.iterrows():
+                if str(row["item"]).strip() == "行业":
+                    val = str(row["value"]).strip()
+                    return val if val and val != "nan" else ""
+        except Exception:
+            logger.debug("_resolve_sector_em failed for %s", code, exc_info=True)
+        return ""
+
+    @staticmethod
+    def _resolve_sector_cninfo(code: str) -> str:
+        """Try CNINFO ``stock_industry_category_cninfo`` for per-stock sector.
+
+        Returns empty string on any failure."""
+        try:
+            ak = AkShareClient._get_akshare_module()
+            df = ak.stock_industry_category_cninfo(symbol=code)
+            if df is not None and not df.empty and "industry" in df.columns:
+                val = str(df.iloc[0]["industry"]).strip()
+                return val if val and val != "nan" else ""
+        except Exception:
+            logger.debug("_resolve_sector_cninfo failed for %s", code, exc_info=True)
+        return ""
+
+    @staticmethod
+    def _resolve_sector_ths(code: str, name: str = "") -> str:
+        """Build & cache a THS (同花顺) industry→stocks mapping, then look up.
+
+        On first call this iterates all THS industry boards.  Subsequent calls
+        hit an in-memory cache.  Returns empty string on any failure.
+        """
+        if AkShareClient._ths_cache_built:
+            return AkShareClient._ths_sector_cache.get(code, "")
+
+        try:
+            ak = AkShareClient._get_akshare_module()
+
+            # Step 1: get all industry board names
+            try:
+                boards = ak.stock_board_industry_name_ths()
+            except (AttributeError, Exception):
+                logger.info(
+                    "THS industry board list API unavailable — skipping THS sector cache."
+                )
+                AkShareClient._ths_cache_built = True
+                return ""
+
+            if boards is None or boards.empty:
+                logger.info("THS industry board list returned empty — skipping.")
+                AkShareClient._ths_cache_built = True
+                return ""
+
+            # Detect column name for industry name
+            for col_candidate in ("name", "名称", "industry_name", "板块名称"):
+                if col_candidate in boards.columns:
+                    name_col = col_candidate
+                    break
+            else:
+                logger.info(
+                    "THS industry board columns unknown: %s — skipping.",
+                    list(boards.columns),
+                )
+                AkShareClient._ths_cache_built = True
+                return ""
+
+            industry_names = boards[name_col].dropna().astype(str).tolist()
+            if not industry_names:
+                logger.info("THS industry board list has no names — skipping.")
+                AkShareClient._ths_cache_built = True
+                return ""
+
+            logger.info("Building THS sector cache from %d industries…", len(industry_names))
+
+            # Step 2: for each industry, get constituent stocks
+            for industry in industry_names:
+                try:
+                    cons = ak.stock_board_industry_cons_ths(symbol=industry)
+                    if cons is not None and not cons.empty:
+                        # Detect code column
+                        for cc in ("code", "代码", "stock_code", "股票代码"):
+                            if cc in cons.columns:
+                                code_col = cc
+                                break
+                        else:
+                            continue
+                        for _, row in cons.iterrows():
+                            c = str(row[code_col]).strip().zfill(6)
+                            if len(c) == 6 and c.isdigit():
+                                AkShareClient._ths_sector_cache[c] = industry
+                except Exception:
+                    logger.debug("THS industry '%s' skipped", industry, exc_info=True)
+
+            AkShareClient._ths_cache_built = True
+            mapped = len(AkShareClient._ths_sector_cache)
+            if mapped > 0:
+                logger.info("THS sector cache ready: %d stocks mapped.", mapped)
+            else:
+                logger.info(
+                    "THS sector cache built but 0 stocks mapped — "
+                    "API returned no constituent data."
+                )
+        except Exception:
+            logger.warning("Failed to build THS sector cache", exc_info=True)
+            AkShareClient._ths_cache_built = True  # don't retry forever
+
+        return AkShareClient._ths_sector_cache.get(code, "")
+
+    @staticmethod
+    def _resolve_sector_tushare(code: str) -> str:
+        """Try Tushare for Shenwan (申万) industry classification.
+
+        Requires ``TUSHARE_TOKEN`` environment variable.  Returns empty
+        string if the token is missing or the API call fails.
+        """
+        import os
+        token = os.getenv("TUSHARE_TOKEN", "")
+        if not token:
+            return ""
+
+        try:
+            import tushare as ts  # type: ignore[import-untyped]
+            pro = ts.pro_api(token)
+            exchange = "SH" if code.startswith("6") else "SZ"
+            ts_code = f"{code}.{exchange}"
+            df = pro.stock_basic(ts_code=ts_code, fields="industry")
+            if df is not None and not df.empty:
+                val = str(df.iloc[0]["industry"]).strip()
+                return val if val and val != "nan" else ""
+        except Exception:
+            logger.debug("Tushare sector lookup failed for %s", code, exc_info=True)
+
+        return ""
+
+    @classmethod
+    def resolve_sector_remote(cls, code: str, stock_name: str = "") -> tuple[str, str]:
+        """Try all remote (API) sources for sector.  Does NOT check local DB/CSV.
+
+        Returns
+        -------
+        tuple[str, str]
+            ``(sector_value, source_label)``
+        """
+        # 1. East Money individual info
+        sector = cls._resolve_sector_em(code)
+        if sector:
+            return sector, "akshare_em"
+
+        # 2. CNINFO
+        sector = cls._resolve_sector_cninfo(code)
+        if sector:
+            return sector, "akshare_cninfo"
+
+        # 3. THS (cached)
+        sector = cls._resolve_sector_ths(code, stock_name)
+        if sector:
+            return sector, "akshare_ths"
+
+        # 4. Tushare (optional)
+        sector = cls._resolve_sector_tushare(code)
+        if sector:
+            return sector, "tushare"
+
+        return "", "empty"
+
     # -- Fetch methods -------------------------------------------------------
 
     def fetch_stock_daily_raw(

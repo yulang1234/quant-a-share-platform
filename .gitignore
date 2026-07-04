@@ -20,12 +20,14 @@ env/
 .idea/
 
 # Logs
-logs/
-*.log
+logs/*.log
+logs/*.log.*
 
 # DuckDB local database
 data/duckdb/*.duckdb
 data/duckdb/*.wal
+data/duckdb/*.wal.corrupt
+data/duckdb/backup-*/
 
 # Parquet data
 data/parquet/ods/*
@@ -51,3 +53,7 @@ data/parquet/**/*.parquet
 # OS
 .DS_Store
 Thumbs.db
+
+# Streamlit
+streamlit.out.log
+streamlit.err.log

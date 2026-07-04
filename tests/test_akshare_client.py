@@ -29,6 +29,14 @@ class FakeAkShare:
     def stock_zh_a_daily(symbol, start_date, end_date, adjust):
         raise NotImplementedError("Not used in these tests")
 
+    @staticmethod
+    def stock_individual_info_em(symbol):
+        """Mock: return sector info. Override per-test via monkeypatch."""
+        return pd.DataFrame({
+            "item": ["股票代码", "股票简称", "行业", "上市时间"],
+            "value": ["000001", "平安银行", "银行", "19910403"],
+        })
+
 
 _DEFAULT_MOCK_DATA = pd.DataFrame({
     "日期": ["2024-01-02", "2024-01-03"],
@@ -305,3 +313,236 @@ class TestFetchWithMock:
 
         with pytest.raises(ValueError, match="missing core fields"):
             client.fetch_stock_daily_raw("000001", "20240101", "20240131")
+
+
+# =====================================================================
+#  get_stock_sector  (backward-compat wrapper)
+# =====================================================================
+
+class TestGetStockSector:
+    """Test the thin backward-compat wrapper — delegates to get_stock_basic_info."""
+
+    @pytest.fixture(autouse=True)
+    def _auto_mock(self, _mock_akshare) -> None:
+        pass
+
+    def test_returns_sector_string(self, monkeypatch) -> None:
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票代码", "股票简称", "行业", "上市时间"],
+                "value": ["000001", "平安银行", "银行", "19910403"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        result = AkShareClient.get_stock_sector("000001")
+        assert result == "银行"
+
+    def test_empty_response_returns_empty_string(self, monkeypatch) -> None:
+        def mock_info(symbol):
+            return pd.DataFrame()
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        result = AkShareClient.get_stock_sector("000001")
+        assert result == ""
+
+    def test_api_exception_returns_empty_string(self, monkeypatch) -> None:
+        def mock_info(symbol):
+            raise ConnectionError("API timeout")
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        result = AkShareClient.get_stock_sector("000001")
+        assert result == ""
+
+
+# =====================================================================
+#  get_stock_basic_info  (new unified method)
+# =====================================================================
+
+class TestGetStockBasicInfo:
+    """Test the unified stock basic info fetcher."""
+
+    @pytest.fixture(autouse=True)
+    def _auto_mock(self, _mock_akshare) -> None:
+        pass
+
+    def test_returns_name_and_sector(self, monkeypatch) -> None:
+        """Happy path: returns both stock_name and sector."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票代码", "股票简称", "行业"],
+                "value": ["000001", "平安银行", "银行"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_code"] == "000001"
+        assert info["stock_name"] == "平安银行"
+        assert info["sector"] == "银行"
+
+    def test_returns_name_and_sector_600519(self, monkeypatch) -> None:
+        """Different stock returns different values."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票代码", "股票简称", "行业"],
+                "value": ["600519", "贵州茅台", "白酒"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("600519")
+        assert info["stock_code"] == "600519"
+        assert info["stock_name"] == "贵州茅台"
+        assert info["sector"] == "白酒"
+
+    def test_int_code(self, monkeypatch) -> None:
+        """Int stock code normalised to 6-digit."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票简称", "行业"],
+                "value": ["平安银行", "银行"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info(1)
+        assert info["stock_code"] == "000001"
+
+    def test_empty_response_all_fields_empty(self, monkeypatch) -> None:
+        """Empty API response → all fields ''."""
+        def mock_info(symbol):
+            return pd.DataFrame()
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == ""
+
+    def test_none_response_all_fields_empty(self, monkeypatch) -> None:
+        """None response → all fields ''."""
+        def mock_info(symbol):
+            return None
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == ""
+
+    def test_api_exception_all_fields_empty(self, monkeypatch) -> None:
+        """API exception → all fields '', no crash."""
+        def mock_info(symbol):
+            raise RuntimeError("Connection refused")
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == ""
+
+    def test_missing_both_fields_returns_empty(self, monkeypatch) -> None:
+        """No name or sector rows → empty strings."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票代码", "上市时间"],
+                "value": ["000001", "19910403"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == ""
+
+    def test_nan_values_skipped(self, monkeypatch) -> None:
+        """'nan' string values treated as empty."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票简称", "行业"],
+                "value": ["nan", "nan"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == ""
+
+    def test_wrong_column_names_returns_empty(self, monkeypatch) -> None:
+        """DataFrame with non-standard columns → all fields ''."""
+        def mock_info(symbol):
+            return pd.DataFrame({"field": ["行业"], "data": ["银行"]})
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == ""
+
+    def test_only_name_no_sector(self, monkeypatch) -> None:
+        """Returns name but empty sector when only name is available."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["股票简称"],
+                "value": ["平安银行"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == "平安银行"
+        assert info["sector"] == ""
+
+    def test_only_sector_no_name(self, monkeypatch) -> None:
+        """Returns sector but empty name when only sector is available."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["行业"],
+                "value": ["银行"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        info = AkShareClient.get_stock_basic_info("000001")
+        assert info["stock_name"] == ""
+        assert info["sector"] == "银行"
+
+    def test_alternative_name_keys(self, monkeypatch) -> None:
+        """Alternative Chinese name keys are recognised."""
+        for name_key in ("股票简称", "证券简称", "股票名称"):
+            def make_mock(key):
+                def mock_info(symbol):
+                    return pd.DataFrame({"item": [key], "value": ["测试"]})
+                return mock_info
+            monkeypatch.setattr(FakeAkShare, "stock_individual_info_em",
+                              staticmethod(make_mock(name_key)))
+            info = AkShareClient.get_stock_basic_info("000001")
+            assert info["stock_name"] == "测试", f"Failed for key: {name_key}"
+
+
+# =====================================================================
+#  resolve_sector_remote
+# =====================================================================
+
+class TestResolveSectorRemote:
+    """Test the multi-API remote sector resolver."""
+
+    @pytest.fixture(autouse=True)
+    def _auto_mock(self, _mock_akshare) -> None:
+        pass
+
+    def test_em_has_priority(self, monkeypatch) -> None:
+        """East Money (stock_individual_info_em) is tried first."""
+        def mock_info(symbol):
+            return pd.DataFrame({
+                "item": ["行业"],
+                "value": ["半导体"],
+            })
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        sector, source = AkShareClient.resolve_sector_remote("000001", "")
+        assert sector == "半导体"
+        assert source == "akshare_em"
+
+    def test_em_failure_falls_through(self, monkeypatch) -> None:
+        """When EM fails, try CNINFO then THS then Tushare."""
+        # Make EM return nothing
+        def mock_info(symbol):
+            return pd.DataFrame({"item": ["其他"], "value": ["x"]})
+        monkeypatch.setattr(FakeAkShare, "stock_individual_info_em", staticmethod(mock_info))
+        # CNINFO also fails (FakeAkShare doesn't have it → exception)
+        # THS also fails (no stock_board_industry_name_ths in FakeAkShare)
+        # Tushare has no token → skipped
+        sector, source = AkShareClient.resolve_sector_remote("000001", "")
+        assert sector == ""
+        assert source == "empty"
+
+    def test_returns_tuple(self) -> None:
+        """Always returns a (str, str) tuple, never raises."""
+        result = AkShareClient.resolve_sector_remote("000001", "")
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], str)
+        assert isinstance(result[1], str)
+
+    def test_no_crash_on_any_input(self) -> None:
+        """All kinds of inputs are safe."""
+        for code in ("000001", "600519", "00000", "abc", ""):
+            sector, source = AkShareClient.resolve_sector_remote(code, "")
+            assert isinstance(sector, str)
+            assert isinstance(source, str)
