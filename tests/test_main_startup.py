@@ -176,13 +176,13 @@ class TestVersionText:
         )
         assert "historical data initialisation)." not in src
 
-    def test_mentions_v11(self) -> None:
+    def test_mentions_v12(self) -> None:
         src = self._src()
-        assert "V1.1" in src
+        assert "V1.2" in src
 
-    def test_v11_scope_lines_present(self) -> None:
+    def test_v12_scope_lines_present(self) -> None:
         src = self._src()
-        assert "[INFO] V1.1 scope: basic backtest engine." in src
+        assert "[INFO] V1.2 scope: backtest evaluation metrics." in src
 
     def test_main_print_strings_are_ascii(self) -> None:
         """Every constant passed to print() in main.py is ASCII-safe."""

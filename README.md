@@ -20,11 +20,29 @@
 - V0.9 因子有效性分析：完成
 - V1.0 TopK 选股策略：完成
 - V1.1 基础回测引擎：完成
+- V1.2 回测评价体系：完成
+- V1.3 多因子评分系统：下一步
+
+## V1.2 已完成内容
+
+V1.2 基于 V1.1 回测生成的每日收益和资金曲线，计算绩效指标、回撤序列、月度收益和年度收益。
+本版本只做回测评价体系，不做多因子评分系统，不调用 AkShare，不写 Parquet，不修改 V1.1 基础回测结果。
+
+### 回测评价体系
+```bash
+python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt
+
+python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt --risk-free-rate 0.02
+
+python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt --start-date 20200101 --end-date 20231231
+```
+
+说明：V1.2 默认读取 backtest_daily_return 和 backtest_equity_curve；V1.2 只做回测评价指标；V1.3 才做多因子评分系统；不调用 AkShare；不写 Parquet；不修改 V1.1 基础回测结果；回测结果不构成投资建议。
 
 ## V1.1 已完成内容
 
 V1.1 基于 V1.0 候选股和 qfq 价格，实现基础回测：持仓→每日收益→资金曲线。
-不做夏普/最大回撤（V1.2）。
+V1.2 负责夏普、最大回撤等回测评价指标。
 
 ### 基础回测引擎
 ```bash
@@ -32,7 +50,7 @@ python -m src.backtest.run_backtest --strategy single_return_20d_top20 --limit 5
 python -m src.backtest.run_backtest --strategy single_return_20d_top20 --initial-cash 500000 --top-k 10 --rebalance-frequency weekly --limit 5
 python -m src.backtest.run_backtest --strategy single_return_20d_top20 --start-date 20200101 --end-date 20231231
 ```
-说明：V1.1 只做基础回测 / V1.2 才做评价指标 / 不构成投资建议。pytest: 502 passed.
+说明：V1.1 只做基础回测 / V1.2 做评价指标 / 不构成投资建议。
 
 ## V1.0 已完成内容
 
@@ -589,8 +607,9 @@ quant-a-share-platform/
 - V0.9 因子有效性分析 [完成]
 - V1.0 TopK 选股策略 [完成]
 - V1.1 基础回测引擎 [完成]
-- V1.2 回测评价体系 [下一步]
-- V1.3 多因子评分系统 [规划中]
+- V1.2 回测评价体系 [完成]
+- V1.3 多因子评分系统 [下一步]
+- V1.4 Streamlit 可视化平台升级 [规划中]
 
 ## 免责声明
 

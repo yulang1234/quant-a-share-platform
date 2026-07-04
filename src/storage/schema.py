@@ -524,6 +524,72 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (backtest_name, trade_date, universe_name)
     );
     """,
+    # 30. Backtest performance summary (V1.2)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_performance_summary (
+        backtest_name           VARCHAR(128) NOT NULL,
+        start_date              DATE,
+        end_date                DATE,
+        initial_equity          DOUBLE,
+        final_equity            DOUBLE,
+        total_return            DOUBLE,
+        annualized_return       DOUBLE,
+        annualized_volatility   DOUBLE,
+        max_drawdown            DOUBLE,
+        sharpe_ratio            DOUBLE,
+        calmar_ratio            DOUBLE,
+        win_rate                DOUBLE,
+        avg_daily_return        DOUBLE,
+        best_daily_return       DOUBLE,
+        worst_daily_return      DOUBLE,
+        trading_days            BIGINT,
+        risk_free_rate          DOUBLE,
+        created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, start_date, end_date)
+    );
+    """,
+    # 31. Backtest drawdown series (V1.2)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_drawdown_series (
+        backtest_name       VARCHAR(128) NOT NULL,
+        trade_date          DATE         NOT NULL,
+        equity              DOUBLE,
+        running_max_equity  DOUBLE,
+        drawdown            DOUBLE,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, trade_date)
+    );
+    """,
+    # 32. Backtest monthly return (V1.2)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_monthly_return (
+        backtest_name       VARCHAR(128) NOT NULL,
+        year_month          VARCHAR(7)   NOT NULL,
+        monthly_return      DOUBLE,
+        start_equity        DOUBLE,
+        end_equity          DOUBLE,
+        trading_days        BIGINT,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, year_month)
+    );
+    """,
+    # 33. Backtest yearly return (V1.2)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_yearly_return (
+        backtest_name       VARCHAR(128) NOT NULL,
+        year                VARCHAR(4)   NOT NULL,
+        yearly_return       DOUBLE,
+        start_equity        DOUBLE,
+        end_equity          DOUBLE,
+        trading_days        BIGINT,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, year)
+    );
+    """,
 ]
 
 

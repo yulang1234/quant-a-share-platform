@@ -1030,3 +1030,30 @@ def upsert_backtest_equity_curve(df: pd.DataFrame) -> int:
 
 def fetch_backtest_equity_curve(backtest_name=None, start_date=None, end_date=None, limit=None) -> pd.DataFrame:
     return _generic_fetch("backtest_equity_curve", {"backtest_name": backtest_name} if backtest_name else {}, limit)
+
+
+# ── V1.2 backtest evaluation helpers ──────────────────────────────────────
+
+def upsert_backtest_performance_summary(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_performance_summary", ["backtest_name", "start_date", "end_date"], df)
+
+def fetch_backtest_performance_summary(backtest_name=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_performance_summary", {"backtest_name": backtest_name} if backtest_name else {}, limit)
+
+def upsert_backtest_drawdown_series(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_drawdown_series", ["backtest_name", "trade_date"], df)
+
+def fetch_backtest_drawdown_series(backtest_name=None, start_date=None, end_date=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_drawdown_series", {"backtest_name": backtest_name} if backtest_name else {}, limit)
+
+def upsert_backtest_monthly_return(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_monthly_return", ["backtest_name", "year_month"], df)
+
+def fetch_backtest_monthly_return(backtest_name=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_monthly_return", {"backtest_name": backtest_name} if backtest_name else {}, limit)
+
+def upsert_backtest_yearly_return(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_yearly_return", ["backtest_name", "year"], df)
+
+def fetch_backtest_yearly_return(backtest_name=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_yearly_return", {"backtest_name": backtest_name} if backtest_name else {}, limit)

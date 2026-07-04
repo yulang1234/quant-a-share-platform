@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -1284,5 +1284,78 @@ with t_backtest:
             "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --limit 5\n\n"
             "# 自定义参数\n"
             "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --initial-cash 500000 --top-k 10 --rebalance-frequency weekly --limit 5",
+            language="bash",
+        )
+
+# ======================================================================
+#  TAB: 回测评价体系 (V1.2)
+# ======================================================================
+
+with t_backtest_eval:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        'V1.2 回测评价体系 -- 绩效指标/回撤序列/月度收益/年度收益。'
+        '页面只展示结果，不执行全量任务；回测结果不构成投资建议。</div>',
+        unsafe_allow_html=True,
+    )
+    try:
+        from src.storage.duckdb_repo import (
+            fetch_backtest_drawdown_series,
+            fetch_backtest_monthly_return,
+            fetch_backtest_performance_summary,
+            fetch_backtest_yearly_return,
+            query_df,
+        )
+        perf_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_performance_summary").iloc[0]["c"])
+        dd_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_drawdown_series").iloc[0]["c"])
+        monthly_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_monthly_return").iloc[0]["c"])
+        yearly_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_yearly_return").iloc[0]["c"])
+        perf = fetch_backtest_performance_summary(limit=10)
+        dd = fetch_backtest_drawdown_series(limit=10)
+        monthly = fetch_backtest_monthly_return(limit=10)
+        yearly = fetch_backtest_yearly_return(limit=10)
+    except Exception:
+        perf_total = dd_total = monthly_total = yearly_total = 0
+        perf = pd.DataFrame(); dd = pd.DataFrame(); monthly = pd.DataFrame(); yearly = pd.DataFrame()
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("绩效汇总行", perf_total)
+    k2.metric("回撤序列行", dd_total)
+    k3.metric("月度收益行", monthly_total)
+    k4.metric("年度收益行", yearly_total)
+
+    st.caption("最近 performance summary")
+    if not perf.empty:
+        cols = [c for c in ["backtest_name", "start_date", "end_date", "total_return", "annualized_return", "max_drawdown", "sharpe_ratio", "calmar_ratio"] if c in perf.columns]
+        st.dataframe(perf[cols], use_container_width=True, height=180, key="df_bt_eval_perf")
+    else:
+        st.info("暂无绩效汇总数据。")
+
+    st.caption("最近 drawdown series")
+    if not dd.empty:
+        cols = [c for c in ["backtest_name", "trade_date", "equity", "running_max_equity", "drawdown"] if c in dd.columns]
+        st.dataframe(dd[cols], use_container_width=True, height=180, key="df_bt_eval_dd")
+    else:
+        st.info("暂无回撤序列数据。")
+
+    st.caption("最近 monthly return")
+    if not monthly.empty:
+        cols = [c for c in ["backtest_name", "year_month", "monthly_return", "start_equity", "end_equity", "trading_days"] if c in monthly.columns]
+        st.dataframe(monthly[cols], use_container_width=True, height=180, key="df_bt_eval_monthly")
+    else:
+        st.info("暂无月度收益数据。")
+
+    st.caption("最近 yearly return")
+    if not yearly.empty:
+        cols = [c for c in ["backtest_name", "year", "yearly_return", "start_equity", "end_equity", "trading_days"] if c in yearly.columns]
+        st.dataframe(yearly[cols], use_container_width=True, height=180, key="df_bt_eval_yearly")
+    else:
+        st.info("暂无年度收益数据。")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt\n\n"
+            "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt --risk-free-rate 0.02\n\n"
+            "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt --start-date 20200101 --end-date 20231231",
             language="bash",
         )
