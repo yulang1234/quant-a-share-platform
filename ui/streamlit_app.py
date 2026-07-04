@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -397,6 +397,34 @@ with t_overview:
     k4.metric("前复权日线", f"{qfq_rows:,}", "QFQ")
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════════════════════
+    #  V1.4 Pipeline status — key data tables snapshot
+    # ═══════════════════════════════════════════════════════════════════
+    try:
+        from ui.components.ui_helpers import safe_metric, safe_fetch_latest_date
+        _pipeline_data = [
+            ("stock_pool", "股票池"),
+            ("stock_daily_qfq", "qfq 行情"),
+            ("stock_daily_factors", "基础因子"),
+            ("stock_factor_rank", "因子排名"),
+            ("factor_analysis_summary", "因子分析"),
+            ("strategy_selection_result", "候选股票"),
+            ("backtest_equity_curve", "回测曲线"),
+            ("backtest_performance_summary", "回测评价"),
+            ("stock_composite_score", "综合评分"),
+        ]
+        _p1, _p2, _p3 = st.columns(3)
+        for i, (tbl, lbl) in enumerate(_pipeline_data):
+            col = [_p1, _p2, _p3][i % 3]
+            cnt = safe_metric(lbl, tbl)
+            col.metric(lbl, cnt)
+        _latest_qfq = safe_fetch_latest_date("stock_daily_qfq") or "--"
+        _latest_factor = safe_fetch_latest_date("stock_daily_factors") or "--"
+        _latest_rank = safe_fetch_latest_date("stock_factor_rank") or "--"
+        st.caption(f"最新行情: {_latest_qfq} | 最新因子: {_latest_factor} | 最新排名: {_latest_rank}")
+    except Exception:
+        pass
 
     # ═══════════════════════════════════════════════════════════════════
     #  Mid section — 40 / 60
@@ -1404,3 +1432,44 @@ with t_scoring:
             "python -m src.scoring.run_scoring --model low_vol_stable_score --trade-date 20260703",
             language="bash",
         )
+
+# ======================================================================
+#  TAB: 命令手册 (V1.4)
+# ======================================================================
+
+with t_commands:
+    st.markdown("<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>常用命令行参考 -- 所有命令默认 dry-run 安全</div>", unsafe_allow_html=True)
+    commands = [
+        ("数据更新", "python -m src.data_update.historical_loader --pool core_500 --adj qfq --limit 5"),
+        ("数据质量", "python -m src.data_quality.quality_report --adj qfq --limit 5"),
+        ("数据修复", "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action plan --dry-run"),
+        ("因子计算", "python -m src.factors.run_factor_calculation --pool core_500 --limit 5"),
+        ("因子排名", "python -m src.factor_rank.run_factor_ranking --pool core_500 --limit 5"),
+        ("因子分析", "python -m src.factor_analysis.run_factor_analysis --pool core_500 --limit 5"),
+        ("TopK 选股", "python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20 --limit 5"),
+        ("基础回测", "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --limit 5"),
+        ("回测评价", "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt"),
+        ("多因子评分", "python -m src.scoring.run_scoring --model momentum_quality_score --limit 5"),
+    ]
+    for name, cmd in commands:
+        with st.expander(name):
+            st.code(cmd, language="bash")
+
+# ======================================================================
+#  TAB: 风险提示 (V1.4)
+# ======================================================================
+
+with t_disclaimer:
+    st.markdown("""<div style="background:#141d30;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:1.5rem;">
+<h3 style="color:#f0f4ff;">风险提示</h3>
+<ul style="color:#9aa6bd;font-size:0.82rem;line-height:1.8;">
+<li>本平台仅用于个人量化研究</li>
+<li>所有评分、回测、评价结果不构成投资建议</li>
+<li>历史回测不代表未来收益</li>
+<li>数据可能存在缺失、延迟、错误</li>
+<li>任何交易决策需要用户独立判断</li>
+<li>本项目不提供自动交易能力</li>
+<li>本项目不接券商 API</li>
+<li>本项目不会自动下单</li>
+</ul>
+</div>""", unsafe_allow_html=True)
