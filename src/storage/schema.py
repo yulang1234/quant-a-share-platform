@@ -319,6 +319,26 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (stock_code, trade_date)
     );
     """,
+    # 18. Factor rank — cross-sectional ranking (V0.8)
+    """
+    CREATE TABLE IF NOT EXISTS stock_factor_rank (
+        stock_code          VARCHAR(6)   NOT NULL,
+        trade_date          DATE         NOT NULL,
+        factor_name         VARCHAR(64)  NOT NULL,
+        raw_value           DOUBLE,
+        clipped_value       DOUBLE,
+        zscore_value        DOUBLE,
+        direction_value     DOUBLE,
+        rank_value          BIGINT,
+        percentile_rank     DOUBLE,
+        factor_direction    VARCHAR(16),
+        rank_method         VARCHAR(16) DEFAULT 'zscore',
+        universe_name       VARCHAR(64) DEFAULT 'core_500',
+        created_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (stock_code, trade_date, factor_name, universe_name)
+    );
+    """,
 ]
 
 

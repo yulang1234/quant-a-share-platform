@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -357,7 +357,7 @@ with t_overview:
             '<div style="display:flex;gap:0.5rem;justify-content:flex-end;'
             'align-items:center;padding-top:0.55rem;">'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
-            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.7.0</span>'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.8.0</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
             'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">开发环境</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
@@ -1104,5 +1104,55 @@ with t_factors:
             "python -m src.factors.run_factor_calculation --stock-code 000001\n\n"
             "# 指定日期范围\n"
             "python -m src.factors.run_factor_calculation --stock-code 000001 --start-date 20200101 --end-date 20231231",
+            language="bash",
+        )
+
+# ======================================================================
+#  TAB: 因子排名 (V0.8)
+# ======================================================================
+
+with t_ranks:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        'V0.8 因子标准化与排名 -- 横截面去极值、z-score、方向处理、排名。</div>',
+        unsafe_allow_html=True,
+    )
+
+    try:
+        from src.storage.duckdb_repo import fetch_factor_rankings, query_df
+        ranks = fetch_factor_rankings(limit=10)
+        total_r = query_df("SELECT COUNT(*) AS c FROM stock_factor_rank")
+        total_rows = int(total_r.iloc[0]["c"]) if not total_r.empty else 0
+        stk_r = query_df("SELECT COUNT(DISTINCT stock_code) AS c FROM stock_factor_rank")
+        stock_count = int(stk_r.iloc[0]["c"]) if not stk_r.empty else 0
+        fac_r = query_df("SELECT COUNT(DISTINCT factor_name) AS c FROM stock_factor_rank")
+        factor_count = int(fac_r.iloc[0]["c"]) if not fac_r.empty else 0
+    except Exception:
+        ranks = pd.DataFrame()
+        total_rows = stock_count = factor_count = 0
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("排名总行数", total_rows)
+    k2.metric("覆盖股票数", stock_count)
+    k3.metric("覆盖因子数", factor_count)
+
+    if not ranks.empty:
+        st.caption("最近排名样例")
+        dc = [c for c in ["stock_code", "trade_date", "factor_name", "raw_value", "rank_value", "percentile_rank"] if c in ranks.columns]
+        st.dataframe(ranks[dc].head(10), use_container_width=True, height=250,
+                     key="df_ranks_sample", selection_mode="single-row", on_select="ignore")
+    else:
+        st.info("暂无排名数据。")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "# 小批量计算因子排名\n"
+            "python -m src.factor_rank.run_factor_ranking --pool core_500 --limit 5\n\n"
+            "# 指定因子排名\n"
+            "python -m src.factor_rank.run_factor_ranking --factor-name return_20d --limit 5\n\n"
+            "# 指定交易日排名\n"
+            "python -m src.factor_rank.run_factor_ranking --trade-date 20260703\n\n"
+            "# 指定日期范围\n"
+            "python -m src.factor_rank.run_factor_ranking --start-date 20260101 --end-date 20260703 --limit 5",
             language="bash",
         )

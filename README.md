@@ -16,6 +16,35 @@
 - V0.5.1 板块/行业自动获取 & 多源补齐：完成
 - V0.6 数据修复与重跑：完成
 - V0.7 基础因子计算：完成
+- V0.8 因子标准化与排名：完成
+
+## V0.8 已完成内容
+
+V0.8 基于 V0.7 的因子数据，进行横截面去极值、z-score 标准化、方向处理与排名。
+
+### 因子标准化与排名
+```bash
+# 小批量计算因子排名
+python -m src.factor_rank.run_factor_ranking --pool core_500 --limit 5
+
+# 指定因子排名
+python -m src.factor_rank.run_factor_ranking --factor-name return_20d --limit 5
+
+# 指定交易日排名
+python -m src.factor_rank.run_factor_ranking --trade-date 20260703
+
+# 指定日期范围
+python -m src.factor_rank.run_factor_ranking --start-date 20260101 --end-date 20260703 --limit 5
+```
+
+说明：
+- V0.8 默认读取 `stock_daily_factors`
+- V0.8 只做标准化与排名，结果写入 `stock_factor_rank`
+- V0.9 才做因子有效性分析
+- 不调用 AkShare / 不写 Parquet / 不修改原始数据
+
+### 测试
+- pytest: 454 passed（含 V0.8 排名测试）
 
 ## V0.7 已完成内容
 
@@ -454,9 +483,9 @@ quant-a-share-platform/
 - V0.5.1 板块/行业自动获取 & 多源补齐 [完成]
 - V0.6 数据修复与重跑 [完成]
 - V0.7 基础因子计算 [完成]
-- V0.8 因子标准化与排名 [下一步]
-- V0.9 因子有效性分析
-- V1.0 TopK 选股策略
+- V0.8 因子标准化与排名 [完成]
+- V0.9 因子有效性分析 [下一步]
+- V1.0 TopK 选股策略 [规划中]
 
 ## 免责声明
 

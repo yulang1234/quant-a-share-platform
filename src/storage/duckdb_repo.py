@@ -779,3 +779,84 @@ def fetch_daily_factors(
         return query_df(sql, params)
     except Exception:
         return pd.DataFrame()
+
+
+# ── V0.8 factor rank helpers ─────────────────────────────────────────────
+
+_RANK_TABLE = "stock_factor_rank"
+_RANK_PK = ("stock_code", "trade_date", "factor_name", "universe_name")
+
+
+def upsert_factor_rankings(df: pd.DataFrame) -> int:
+    """Upsert rows into ``stock_factor_rank``.
+
+    Delete-then-insert by (stock_code, trade_date, factor_name, universe_name).
+    """
+    if df is None or df.empty:
+        return 0
+
+    con = get_connection()
+    if "stock_code" in df.columns:
+        df = df.copy()
+        df["stock_code"] = df["stock_code"].astype(str).str.zfill(6)
+
+    table_cols = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?",
+        [_RANK_TABLE],
+    ).fetchdf()["column_name"].tolist()
+    insert_cols = [c for c in df.columns if c in table_cols]
+    if not insert_cols:
+        return 0
+    df_out = df[insert_cols]
+
+    temp = "__upsert_rank_temp__"
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    con.execute(f"CREATE TEMPORARY TABLE {temp} AS SELECT * FROM df_out")
+
+    con.execute(f"""
+        DELETE FROM {_RANK_TABLE}
+        WHERE (stock_code, trade_date, factor_name, universe_name) IN (
+            SELECT stock_code, trade_date, factor_name, universe_name FROM {temp}
+        )
+    """)
+    cols = ", ".join(insert_cols)
+    con.execute(f"INSERT INTO {_RANK_TABLE} ({cols}) SELECT {cols} FROM {temp}")
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    return len(df_out)
+
+
+def fetch_factor_rankings(
+    factor_name: str | None = None,
+    trade_date: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    stock_code: str | None = None,
+    limit: int | None = None,
+) -> pd.DataFrame:
+    """Query rows from ``stock_factor_rank``."""
+    try:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if factor_name:
+            conditions.append("factor_name = ?")
+            params.append(factor_name)
+        if trade_date:
+            conditions.append("trade_date = ?")
+            params.append(trade_date)
+        if start_date:
+            conditions.append("trade_date >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("trade_date <= ?")
+            params.append(end_date)
+        if stock_code:
+            conditions.append("stock_code = ?")
+            params.append(str(stock_code).zfill(6))
+        where = " AND ".join(conditions) if conditions else "1=1"
+        sql = f"SELECT * FROM {_RANK_TABLE} WHERE {where} ORDER BY trade_date, factor_name, rank_value"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        return query_df(sql, params)
+    except Exception:
+        return pd.DataFrame()
