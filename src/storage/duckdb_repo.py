@@ -903,12 +903,30 @@ def _generic_fetch(table: str, filters: dict, limit: int | None = None) -> pd.Da
                 conds.append(f"{col} = ?")
                 params.append(val)
         where = " AND ".join(conds) if conds else "1=1"
-        sql = f"SELECT * FROM {table} WHERE {where} ORDER BY trade_date, factor_name"
+        sql = f"SELECT * FROM {table} WHERE {where}"
+        # Use safe ORDER BY that works for any table
+        if "trade_date" in _table_columns(table):
+            sql += " ORDER BY trade_date"
+            if "factor_name" in _table_columns(table):
+                sql += ", factor_name"
         if limit:
             sql += f" LIMIT {int(limit)}"
         return query_df(sql, params)
     except Exception:
         return pd.DataFrame()
+
+
+def _table_columns(table: str) -> set[str]:
+    """Return column names for *table*, cached."""
+    try:
+        con = get_connection()
+        cols = con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'main' AND table_name = ?", [table],
+        ).fetchdf()["column_name"].tolist()
+        return set(cols)
+    except Exception:
+        return set()
 
 
 def upsert_forward_returns(df: pd.DataFrame) -> int:
@@ -941,3 +959,44 @@ def upsert_analysis_summary(df: pd.DataFrame) -> int:
 
 def fetch_analysis_summary(factor_name=None, forward_days=None, limit=None) -> pd.DataFrame:
     return _generic_fetch("factor_analysis_summary", {"factor_name": factor_name, "forward_days": forward_days}, limit)
+
+
+# ── V1.0 strategy helpers ──────────────────────────────────────────────────
+
+
+def upsert_strategy_config(df: pd.DataFrame) -> int:
+    return _generic_upsert("strategy_config", ["strategy_name"], df)
+
+
+def fetch_strategy_config(strategy_name=None, active_only=True) -> pd.DataFrame:
+    filters = {}
+    if strategy_name:
+        filters["strategy_name"] = strategy_name
+    df = _generic_fetch("strategy_config", filters)
+    if active_only and not df.empty and "is_active" in df.columns:
+        df = df[df["is_active"] == True]  # noqa: E712
+    return df
+
+
+def upsert_strategy_selection_result(df: pd.DataFrame) -> int:
+    return _generic_upsert("strategy_selection_result", ["strategy_name", "trade_date", "stock_code", "universe_name"], df)
+
+
+def fetch_strategy_selection_result(strategy_name=None, trade_date=None, start_date=None, end_date=None, stock_code=None, limit=None) -> pd.DataFrame:
+    filters = {}
+    if strategy_name: filters["strategy_name"] = strategy_name
+    if trade_date: filters["trade_date"] = trade_date
+    if stock_code: filters["stock_code"] = stock_code
+    return _generic_fetch("strategy_selection_result", filters, limit)
+
+
+def upsert_strategy_selection_detail(df: pd.DataFrame) -> int:
+    return _generic_upsert("strategy_selection_detail", ["strategy_name", "trade_date", "stock_code", "factor_name", "universe_name"], df)
+
+
+def fetch_strategy_selection_detail(strategy_name=None, trade_date=None, stock_code=None, limit=None) -> pd.DataFrame:
+    filters = {}
+    if strategy_name: filters["strategy_name"] = strategy_name
+    if trade_date: filters["trade_date"] = trade_date
+    if stock_code: filters["stock_code"] = stock_code
+    return _generic_fetch("strategy_selection_detail", filters, limit)

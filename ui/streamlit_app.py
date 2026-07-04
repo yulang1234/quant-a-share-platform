@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -357,7 +357,7 @@ with t_overview:
             '<div style="display:flex;gap:0.5rem;justify-content:flex-end;'
             'align-items:center;padding-top:0.55rem;">'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
-            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.9.0</span>'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v1.0.0</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
             'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">开发环境</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
@@ -1198,5 +1198,48 @@ with t_analysis:
             "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --forward-days 5 --limit 5\n\n"
             "# 指定日期范围和未来收益周期\n"
             "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --start-date 20200101 --end-date 20231231 --forward-days 10",
+            language="bash",
+        )
+
+# ======================================================================
+#  TAB: TopK 选股 (V1.0)
+# ======================================================================
+
+with t_topk:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        'V1.0 TopK 选股策略 -- 单因子/多因子加权 TopK 候选股票生成。'
+        '结果仅供参考，不构成投资建议。</div>',
+        unsafe_allow_html=True,
+    )
+    try:
+        from src.storage.duckdb_repo import fetch_strategy_selection_result, query_df
+        sel = fetch_strategy_selection_result(limit=20)
+        total = query_df("SELECT COUNT(*) AS c FROM strategy_selection_result")
+        total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
+        strats = query_df("SELECT COUNT(DISTINCT strategy_name) AS c FROM strategy_selection_result")
+        strat_count = int(strats.iloc[0]["c"]) if not strats.empty else 0
+    except Exception:
+        sel = pd.DataFrame(); total_rows = strat_count = 0
+
+    k1, k2 = st.columns(2)
+    k1.metric("候选股结果数", total_rows)
+    k2.metric("已运行策略数", strat_count)
+
+    if not sel.empty:
+        st.caption("最近候选股 TopK")
+        dc = [c for c in ["strategy_name", "trade_date", "stock_code", "rank_in_strategy", "composite_score"] if c in sel.columns]
+        st.dataframe(sel[dc].head(20), use_container_width=True, height=250, key="df_topk_sample", selection_mode="single-row", on_select="ignore")
+    else:
+        st.info("暂无候选股数据。")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "# 默认单因子策略\n"
+            "python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20 --limit 5\n\n"
+            "# 临时单因子\n"
+            "python -m src.strategy.run_topk_strategy --factor-name return_20d --top-k 20 --limit 5\n\n"
+            "# 临时多因子\n"
+            "python -m src.strategy.run_topk_strategy --factor-weights \"{\\\"return_20d\\\":0.5,\\\"momentum_20d\\\":0.5}\" --top-k 20 --limit 5",
             language="bash",
         )

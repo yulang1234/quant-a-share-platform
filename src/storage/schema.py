@@ -410,6 +410,58 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (factor_name, forward_days, start_date, end_date, universe_name)
     );
     """,
+    # 23. Strategy configuration (V1.0)
+    """
+    CREATE TABLE IF NOT EXISTS strategy_config (
+        strategy_name               VARCHAR(64)  NOT NULL,
+        strategy_type               VARCHAR(32),
+        factor_name                 VARCHAR(64),
+        factor_weights              VARCHAR(2048),
+        top_k                       INTEGER,
+        min_avg_rank_ic             DOUBLE,
+        min_positive_rank_ic_ratio  DOUBLE,
+        min_group_spread            DOUBLE,
+        is_active                   BOOLEAN DEFAULT TRUE,
+        description                 VARCHAR(512),
+        created_at                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (strategy_name)
+    );
+    """,
+    # 24. Strategy selection result (V1.0)
+    """
+    CREATE TABLE IF NOT EXISTS strategy_selection_result (
+        strategy_name       VARCHAR(64)  NOT NULL,
+        trade_date          DATE         NOT NULL,
+        stock_code          VARCHAR(6)   NOT NULL,
+        rank_in_strategy    INTEGER,
+        composite_score     DOUBLE,
+        factor_count        INTEGER,
+        selected_reason     VARCHAR(512),
+        universe_name       VARCHAR(64) DEFAULT 'core_500',
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (strategy_name, trade_date, stock_code, universe_name)
+    );
+    """,
+    # 25. Strategy selection detail (V1.0)
+    """
+    CREATE TABLE IF NOT EXISTS strategy_selection_detail (
+        strategy_name           VARCHAR(64)  NOT NULL,
+        trade_date              DATE         NOT NULL,
+        stock_code              VARCHAR(6)   NOT NULL,
+        factor_name             VARCHAR(64)  NOT NULL,
+        factor_score            DOUBLE,
+        factor_weight           DOUBLE,
+        weighted_score          DOUBLE,
+        factor_rank_value       BIGINT,
+        factor_percentile_rank  DOUBLE,
+        universe_name           VARCHAR(64) DEFAULT 'core_500',
+        created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (strategy_name, trade_date, stock_code, factor_name, universe_name)
+    );
+    """,
 ]
 
 

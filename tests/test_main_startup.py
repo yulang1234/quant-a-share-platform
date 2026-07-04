@@ -176,16 +176,14 @@ class TestVersionText:
         )
         assert "historical data initialisation)." not in src
 
-    def test_mentions_v09(self) -> None:
-        """The V0.9 milestone must be visible in the banner."""
+    def test_mentions_v10(self) -> None:
+        """The V1.0 milestone must be visible."""
         src = self._src()
-        assert "V0.9" in src
-        assert "factor effectiveness" in src.lower()
+        assert "V1.0" in src
 
-    def test_v09_scope_lines_present(self) -> None:
-        """The V0.9 [INFO] lines must be present."""
+    def test_v10_scope_lines_present(self) -> None:
         src = self._src()
-        assert "[INFO] V0.9 scope: factor effectiveness analysis." in src
+        assert "[INFO] V1.0 scope: topk stock selection strategy." in src
 
     def test_main_print_strings_are_ascii(self) -> None:
         """Every constant passed to print() in main.py is ASCII-safe."""
