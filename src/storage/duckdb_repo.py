@@ -503,3 +503,189 @@ def query_daily_data(table_name: str, stock_code: str | None = None) -> pd.DataF
             [stock_code],
         ).fetchdf()
     return con.execute(f"SELECT * FROM {table_name} ORDER BY stock_code, trade_date").fetchdf()
+
+
+# ── V0.6 data-repair helpers ─────────────────────────────────────────────
+
+def delete_daily_range(
+    table_name: str, stock_code: str,
+    start_date: str | None = None, end_date: str | None = None,
+) -> int:
+    """Delete rows in *table_name* for *stock_code* within a date range.
+
+    Parameters
+    ----------
+    table_name : str
+        ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    stock_code : str
+        6-digit code.
+    start_date : str, optional
+        ``"YYYY-MM-DD"`` inclusive.  Omit to delete from the beginning.
+    end_date : str, optional
+        ``"YYYY-MM-DD"`` inclusive.  Omit to delete to the end.
+
+    Returns
+    -------
+    int
+        Number of rows deleted.
+
+    Raises
+    ------
+    ValueError
+        If *table_name* is not a recognised daily-data table.
+    """
+    if table_name not in _DAILY_TABLES:
+        raise ValueError(
+            f"table_name must be one of {sorted(_DAILY_TABLES)}, "
+            f"got '{table_name}'"
+        )
+
+    con = get_connection()
+    conditions = ["stock_code = ?"]
+    params: list[Any] = [stock_code]
+
+    if start_date:
+        conditions.append("trade_date >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("trade_date <= ?")
+        params.append(end_date)
+
+    # Count before
+    before = con.execute(
+        f"SELECT COUNT(*) FROM {table_name} WHERE {' AND '.join(conditions)}",
+        params,
+    ).fetchone()[0]
+
+    if before == 0:
+        return 0
+
+    con.execute(
+        f"DELETE FROM {table_name} WHERE {' AND '.join(conditions)}",
+        params,
+    )
+    logger.debug(
+        "delete_daily_range: %s rows deleted from %s for %s",
+        before, table_name, stock_code,
+    )
+    return before
+
+
+def fetch_daily_range(
+    table_name: str, stock_code: str,
+    start_date: str | None = None, end_date: str | None = None,
+) -> pd.DataFrame:
+    """Query daily data for *stock_code* with optional date range.
+
+    Parameters
+    ----------
+    table_name : str
+        ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    stock_code : str
+        6-digit code.
+    start_date : str, optional
+        ``"YYYY-MM-DD"``.
+    end_date : str, optional
+        ``"YYYY-MM-DD"``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Ordered by trade_date.
+
+    Raises
+    ------
+    ValueError
+        If *table_name* is not recognised.
+    """
+    if table_name not in _DAILY_TABLES:
+        raise ValueError(
+            f"table_name must be one of {sorted(_DAILY_TABLES)}, "
+            f"got '{table_name}'"
+        )
+
+    params: list[Any] = [stock_code]
+    conditions = ["stock_code = ?"]
+    if start_date:
+        conditions.append("trade_date >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("trade_date <= ?")
+        params.append(end_date)
+
+    return query_df(
+        f"SELECT * FROM {table_name} WHERE {' AND '.join(conditions)} ORDER BY trade_date",
+        params,
+    )
+
+
+def replace_daily_range(
+    table_name: str, stock_code: str,
+    start_date: str, end_date: str, df: pd.DataFrame,
+) -> int:
+    """Replace data in *table_name* for *stock_code* within a date range.
+
+    Deletes existing rows in [start_date, end_date], then inserts *df*.
+    If *df* is empty, **no data is deleted** (safety).
+
+    Parameters
+    ----------
+    table_name : str
+        ``"stock_daily_raw"`` or ``"stock_daily_qfq"``.
+    stock_code : str
+        6-digit code.
+    start_date : str
+        ``"YYYY-MM-DD"``.
+    end_date : str
+        ``"YYYY-MM-DD"``.
+    df : pd.DataFrame
+        Replacement data.  Must contain at least ``stock_code`` and
+        ``trade_date`` columns.
+
+    Returns
+    -------
+    int
+        Number of rows inserted.
+
+    Raises
+    ------
+    ValueError
+        If *table_name* is not recognised.
+    """
+    if table_name not in _DAILY_TABLES:
+        raise ValueError(
+            f"table_name must be one of {sorted(_DAILY_TABLES)}, "
+            f"got '{table_name}'"
+        )
+    if df is None or df.empty:
+        logger.debug("replace_daily_range: empty df, skipping.")
+        return 0
+
+    con = get_connection()
+    con.execute(
+        f"DELETE FROM {table_name} "
+        "WHERE stock_code = ? AND trade_date >= ? AND trade_date <= ?",
+        [stock_code, start_date, end_date],
+    )
+
+    # Insert via temp table (reuse upsert pattern but simpler)
+    temp = f"__replace_temp_{table_name}__"
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    con.execute(f"CREATE TEMPORARY TABLE {temp} AS SELECT * FROM df")
+
+    table_cols = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?",
+        [table_name],
+    ).fetchdf()["column_name"].tolist()
+    insert_cols = [c for c in df.columns if c in table_cols]
+    cols_sql = ", ".join(insert_cols)
+    con.execute(f"INSERT INTO {table_name} ({cols_sql}) SELECT {cols_sql} FROM {temp}")
+    inserted = len(df)
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+
+    logger.debug(
+        "replace_daily_range: %d rows inserted into %s for %s",
+        inserted, table_name, stock_code,
+    )
+    return inserted

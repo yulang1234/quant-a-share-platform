@@ -233,6 +233,30 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (stock_code, trade_date, model_name)
     );
     """,
+    # 16. Data repair log (V0.6)
+    """
+    CREATE TABLE IF NOT EXISTS data_repair_log (
+        repair_id       VARCHAR(36)   NOT NULL,
+        stock_code      VARCHAR(6),
+        pool_name       VARCHAR(64)  DEFAULT 'core_500',
+        adj_type        VARCHAR(8)   DEFAULT 'all',
+        issue_type      VARCHAR(32)  DEFAULT 'manual',
+        repair_action   VARCHAR(32)  DEFAULT 'plan',
+        start_date      DATE,
+        end_date        DATE,
+        dry_run         BOOLEAN      DEFAULT TRUE,
+        confirm         BOOLEAN      DEFAULT FALSE,
+        status          VARCHAR(16)  DEFAULT 'planned',
+        affected_rows   BIGINT       DEFAULT 0,
+        before_row_count BIGINT      DEFAULT 0,
+        after_row_count  BIGINT      DEFAULT 0,
+        error_message   VARCHAR(1024),
+        started_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        finished_at     TIMESTAMP,
+        created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (repair_id)
+    );
+    """,
 ]
 
 

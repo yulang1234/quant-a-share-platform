@@ -14,6 +14,50 @@
 - V0.4 每日增量更新：完成
 - V0.5 数据质量检查：完成
 - V0.5.1 板块/行业自动获取 & 多源补齐：完成
+- V0.6 数据修复与重跑：完成
+
+## V0.6 已完成内容
+
+V0.6 基于 V0.5 的 `data_quality_report` 结果，提供安全、可控、可追踪的数据修复与重跑能力。
+
+### 安全机制
+- **dry-run 默认开启**：所有命令默认只预览，不修改数据
+- **--confirm 保护**：真实执行必须同时传 `--confirm`
+- **repair log 全记录**：所有操作（含 dry-run/skipped）写入 `data_repair_log`
+- **不默认全量**：limit 参数限制修复范围
+
+### 核心模块
+- `repair_planner`: 从质量报告生成修复计划
+- `duplicate_repair`: 清理 stock_code+trade_date 重复数据
+- `date_range_repair`: 按日期区间重拉 AkShare 数据
+- `parquet_repair`: 从 DuckDB 重建 Parquet 文件
+- `repair_log`: 修复日志读写与汇总
+
+### CLI
+```bash
+# dry-run 计划
+python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action plan --dry-run
+
+# dry-run 去重
+python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action deduplicate --adj all --dry-run
+
+# 真实去重（需同时 --no-dry-run --confirm）
+python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action deduplicate --adj all --no-dry-run --confirm
+
+# dry-run 重拉区间
+python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj raw --action refetch --start-date 20260701 --end-date 20260703 --dry-run
+
+# 真实重拉
+python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj raw --action refetch --start-date 20260701 --end-date 20260703 --no-dry-run --confirm
+
+# 真实重建 Parquet
+python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj all --action rebuild-parquet --no-dry-run --confirm
+```
+
+### 测试
+- pytest: 383 passed（含 36 个 V0.6 测试）
+- 所有外部 API 调用在测试中 mock
+- dry-run 默认保护数据安全
 
 ## V0.5 已完成内容
 
@@ -332,8 +376,8 @@ quant-a-share-platform/
 - V0.4 每日增量更新 [完成]
 - V0.5 数据质量检查 [完成]
 - V0.5.1 板块/行业自动获取 & 多源补齐 [完成]
-- V0.6 数据修复与重跑 [下一步]
-- V0.7 基础因子计算
+- V0.6 数据修复与重跑 [完成]
+- V0.7 基础因子计算 [下一步]
 - V0.8 因子标准化与排名
 - V0.9 因子有效性分析
 - V1.0 TopK 选股策略

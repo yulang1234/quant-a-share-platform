@@ -176,16 +176,16 @@ class TestVersionText:
         )
         assert "historical data initialisation)." not in src
 
-    def test_mentions_v05(self) -> None:
-        """The V0.5 milestone must be visible in the banner."""
+    def test_mentions_v06(self) -> None:
+        """The V0.6 milestone must be visible in the banner."""
         src = self._src()
-        assert "V0.5" in src
-        assert "data quality check" in src.lower()
+        assert "V0.6" in src
+        assert "data repair" in src.lower()
 
-    def test_v05_scope_lines_present(self) -> None:
-        """The two [INFO] V0.5 lines must both be present."""
+    def test_v06_scope_lines_present(self) -> None:
+        """The V0.6 [INFO] lines must be present."""
         src = self._src()
-        assert "[INFO] V0.5 scope: data quality check." in src
+        assert "[INFO] V0.6 scope: data repair and rerun." in src
         assert "[INFO] Next step: run quality_report checks." in src
 
     def test_main_print_strings_are_ascii(self) -> None:

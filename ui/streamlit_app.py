@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -357,7 +357,7 @@ with t_overview:
             '<div style="display:flex;gap:0.5rem;justify-content:flex-end;'
             'align-items:center;padding-top:0.55rem;">'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
-            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.5.1</span>'
+            'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">v0.6.0</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
             'border-radius:12px;padding:3px 12px;font-size:0.7rem;color:#9aa6bd;">开发环境</span>'
             '<span style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
@@ -988,3 +988,75 @@ with t_quality:
                     st.markdown("暂无质量问题记录")
             except Exception as e:
                 st.markdown(f"加载失败：{e}")
+
+# ======================================================================
+#  TAB: 数据修复 (V0.6)
+# ======================================================================
+
+with t_repair:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        'V0.6 数据修复与重跑 -- 基于质量检查结果做安全修复。'
+        '所有操作默认 dry-run，需 --confirm 才真实执行。</div>',
+        unsafe_allow_html=True,
+    )
+
+    try:
+        from src.data_repair.repair_log import get_recent_repair_logs, get_repair_summary
+        summary = get_repair_summary()
+        logs = get_recent_repair_logs(limit=20)
+    except Exception:
+        summary = {"total_logs": 0, "by_status": [], "by_action": []}
+        logs = pd.DataFrame()
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("修复日志总数", summary.get("total_logs", 0))
+    success_count = sum(r["cnt"] for r in summary.get("by_status", []) if r["status"] == "success")
+    k2.metric("成功修复", success_count)
+    dry_count = sum(r["cnt"] for r in summary.get("by_status", []) if r["status"] == "dry_run")
+    k3.metric("Dry-run", dry_count)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    cl, cr = st.columns([1, 1.5])
+
+    with cl:
+        with st.container(border=True):
+            st.caption("状态汇总")
+            if summary["by_status"]:
+                for r in summary["by_status"]:
+                    st.markdown(f'<span style="color:#c8d0e0;font-size:0.78rem;">{r["status"]}: {r["cnt"]}</span>', unsafe_allow_html=True)
+            else:
+                st.markdown("暂无修复记录")
+        with st.container(border=True):
+            st.caption("操作汇总")
+            if summary["by_action"]:
+                for r in summary["by_action"]:
+                    st.markdown(f'<span style="color:#c8d0e0;font-size:0.78rem;">{r["repair_action"]}: {r["cnt"]}</span>', unsafe_allow_html=True)
+            else:
+                st.markdown("暂无操作记录")
+
+    with cr:
+        with st.container(border=True):
+            st.caption("最近修复日志")
+            if not logs.empty:
+                dc = [c for c in ["stock_code", "repair_action", "adj_type", "status", "affected_rows", "created_at"] if c in logs.columns]
+                st.dataframe(logs[dc], use_container_width=True, height=280, key="df_repair_logs", selection_mode="single-row", on_select="ignore")
+            else:
+                st.markdown("暂无修复日志")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "# 生成修复计划\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action plan --dry-run\n\n"
+            "# dry-run 去重\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action deduplicate --adj all --dry-run\n\n"
+            "# 真实去重\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action deduplicate --adj all --no-dry-run --confirm\n\n"
+            "# dry-run 重拉区间\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj raw --action refetch --start-date 20260701 --end-date 20260703 --dry-run\n\n"
+            "# 真实重拉\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj raw --action refetch --start-date 20260701 --end-date 20260703 --no-dry-run --confirm\n\n"
+            "# 真实重建 Parquet\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj all --action rebuild-parquet --no-dry-run --confirm",
+            language="bash",
+        )
