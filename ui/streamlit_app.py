@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -1241,5 +1241,48 @@ with t_topk:
             "python -m src.strategy.run_topk_strategy --factor-name return_20d --top-k 20 --limit 5\n\n"
             "# 临时多因子\n"
             "python -m src.strategy.run_topk_strategy --factor-weights \"{\\\"return_20d\\\":0.5,\\\"momentum_20d\\\":0.5}\" --top-k 20 --limit 5",
+            language="bash",
+        )
+
+# ======================================================================
+#  TAB: 基础回测 (V1.1)
+# ======================================================================
+
+with t_backtest:
+    st.markdown(
+        '<div style="font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;">'
+        'V1.1 基础回测 -- 持仓/每日收益/资金曲线。V1.2 才做评价指标。不构成投资建议。</div>',
+        unsafe_allow_html=True,
+    )
+    try:
+        from src.storage.duckdb_repo import fetch_backtest_config, fetch_backtest_daily_returns, fetch_backtest_equity_curve
+        cfgs = fetch_backtest_config()
+        rets = fetch_backtest_daily_returns(limit=10)
+        eqs = fetch_backtest_equity_curve(limit=10)
+    except Exception:
+        cfgs = pd.DataFrame(); rets = pd.DataFrame(); eqs = pd.DataFrame()
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("回测配置数", len(cfgs))
+    k2.metric("每日收益行", len(rets))
+    k3.metric("资金曲线行", len(eqs))
+
+    if not eqs.empty:
+        st.caption("最近资金曲线")
+        dc = [c for c in ["backtest_name", "trade_date", "equity"] if c in eqs.columns]
+        st.dataframe(eqs[dc].head(10), use_container_width=True, height=200, key="df_bt_eq")
+    elif not cfgs.empty:
+        st.caption("最近回测配置")
+        dc = [c for c in ["backtest_name", "strategy_name", "initial_cash", "top_k", "rebalance_frequency"] if c in cfgs.columns]
+        st.dataframe(cfgs[dc].head(5), use_container_width=True, height=150, key="df_bt_cfg")
+    else:
+        st.info("暂无回测数据。")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "# 默认基础回测\n"
+            "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --limit 5\n\n"
+            "# 自定义参数\n"
+            "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --initial-cash 500000 --top-k 10 --rebalance-frequency weekly --limit 5",
             language="bash",
         )

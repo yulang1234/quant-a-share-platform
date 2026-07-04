@@ -1000,3 +1000,33 @@ def fetch_strategy_selection_detail(strategy_name=None, trade_date=None, stock_c
     if trade_date: filters["trade_date"] = trade_date
     if stock_code: filters["stock_code"] = stock_code
     return _generic_fetch("strategy_selection_detail", filters, limit)
+
+
+# ── V1.1 backtest helpers ──────────────────────────────────────────────────
+
+def upsert_backtest_config(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_config", ["backtest_name"], df)
+
+def fetch_backtest_config(backtest_name=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_config", {"backtest_name": backtest_name} if backtest_name else {})
+
+def upsert_backtest_positions(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_position", ["backtest_name", "trade_date", "stock_code", "universe_name"], df)
+
+def fetch_backtest_positions(backtest_name=None, start_date=None, end_date=None, stock_code=None, limit=None) -> pd.DataFrame:
+    f = {}; 
+    if backtest_name: f["backtest_name"] = backtest_name
+    if stock_code: f["stock_code"] = stock_code
+    return _generic_fetch("backtest_position", f, limit)
+
+def upsert_backtest_daily_returns(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_daily_return", ["backtest_name", "trade_date", "universe_name"], df)
+
+def fetch_backtest_daily_returns(backtest_name=None, start_date=None, end_date=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_daily_return", {"backtest_name": backtest_name} if backtest_name else {}, limit)
+
+def upsert_backtest_equity_curve(df: pd.DataFrame) -> int:
+    return _generic_upsert("backtest_equity_curve", ["backtest_name", "trade_date", "universe_name"], df)
+
+def fetch_backtest_equity_curve(backtest_name=None, start_date=None, end_date=None, limit=None) -> pd.DataFrame:
+    return _generic_fetch("backtest_equity_curve", {"backtest_name": backtest_name} if backtest_name else {}, limit)

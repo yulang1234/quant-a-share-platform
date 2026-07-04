@@ -462,6 +462,68 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (strategy_name, trade_date, stock_code, factor_name, universe_name)
     );
     """,
+    # 26. Backtest config (V1.1)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_config (
+        backtest_name       VARCHAR(128) NOT NULL,
+        strategy_name       VARCHAR(64),
+        start_date          DATE,
+        end_date            DATE,
+        initial_cash        DOUBLE,
+        top_k               INTEGER,
+        rebalance_frequency VARCHAR(16),
+        price_type          VARCHAR(16) DEFAULT 'qfq_close',
+        status              VARCHAR(16) DEFAULT 'pending',
+        description         VARCHAR(512),
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name)
+    );
+    """,
+    # 27. Backtest positions (V1.1)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_position (
+        backtest_name       VARCHAR(128) NOT NULL,
+        strategy_name       VARCHAR(64),
+        rebalance_date      DATE,
+        trade_date          DATE         NOT NULL,
+        stock_code          VARCHAR(6)   NOT NULL,
+        weight              DOUBLE,
+        rank_in_strategy    INTEGER,
+        composite_score     DOUBLE,
+        universe_name       VARCHAR(64) DEFAULT 'core_500',
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, trade_date, stock_code, universe_name)
+    );
+    """,
+    # 28. Backtest daily returns (V1.1)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_daily_return (
+        backtest_name       VARCHAR(128) NOT NULL,
+        trade_date          DATE         NOT NULL,
+        portfolio_return    DOUBLE,
+        holding_count       INTEGER,
+        universe_name       VARCHAR(64) DEFAULT 'core_500',
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, trade_date, universe_name)
+    );
+    """,
+    # 29. Backtest equity curve (V1.1)
+    """
+    CREATE TABLE IF NOT EXISTS backtest_equity_curve (
+        backtest_name       VARCHAR(128) NOT NULL,
+        trade_date          DATE         NOT NULL,
+        initial_cash        DOUBLE,
+        portfolio_return    DOUBLE,
+        equity              DOUBLE,
+        universe_name       VARCHAR(64) DEFAULT 'core_500',
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (backtest_name, trade_date, universe_name)
+    );
+    """,
 ]
 
 
