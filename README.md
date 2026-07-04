@@ -349,55 +349,99 @@ quant-a-share-platform/
 ├── README.md
 ├── requirements.txt
 ├── .env.example
-├── main.py
+├── main.py                        # V0.7 入口
 ├── config/
+│   ├── settings.py
+│   └── logging_config.py          # V0.5.1 RotatingFileHandler
 ├── data/
-│   ├── duckdb/
+│   ├── duckdb/                    # DuckDB 本地数据库（不提交）
 │   ├── parquet/
 │   │   ├── ods/
 │   │   ├── dwd/
-│   │   │   ├── daily_raw/      # V0.3 不复权日线 Parquet
-│   │   │   └── daily_qfq/      # V0.3 前复权日线 Parquet
+│   │   │   ├── daily_raw/         # V0.3 不复权日线 Parquet
+│   │   │   └── daily_qfq/         # V0.3 前复权日线 Parquet
 │   │   └── ads/
 │   └── stock_pool/
+│       ├── core_500.csv           # V0.2 500 核心股票池
+│       └── sector_overrides.csv   # V0.5.1 行业覆盖表
 ├── src/
 │   ├── data_source/
-│   │   └── akshare_client.py    # V0.3 AkShare 封装
+│   │   └── akshare_client.py      # V0.3 AkShare 封装 + V0.5.1 多源行业
 │   ├── data_update/
-│   │   ├── historical_loader.py # V0.3 历史数据加载器
-│   │   ├── daily_incremental.py # V0.4 每日增量更新
-│   │   ├── update_log.py        # V0.3 更新日志
-│   │   └── retry_failed.py      # V0.3 失败重试
+│   │   ├── historical_loader.py   # V0.3 历史数据加载器
+│   │   ├── daily_incremental.py   # V0.4 每日增量更新
+│   │   ├── update_log.py          # V0.3 更新日志
+│   │   └── retry_failed.py        # V0.3 失败重试
 │   ├── data_quality/
-│   │   ├── duplicate_checker.py # V0.5 重复数据检查
+│   │   ├── duplicate_checker.py   # V0.5 重复数据检查
 │   │   ├── missing_date_checker.py # V0.5 缺失日期检查
-│   │   ├── price_checker.py     # V0.5 价格异常检查
-│   │   └── quality_report.py    # V0.5 质量报告汇总
+│   │   ├── price_checker.py       # V0.5 价格异常检查
+│   │   └── quality_report.py      # V0.5 质量报告汇总
+│   ├── data_repair/               # V0.6 数据修复与重跑
+│   │   ├── repair_planner.py
+│   │   ├── duplicate_repair.py
+│   │   ├── date_range_repair.py
+│   │   ├── parquet_repair.py
+│   │   ├── repair_log.py
+│   │   └── run_data_repair.py
+│   ├── factors/                   # V0.7 基础因子计算
+│   │   ├── base_factor.py
+│   │   ├── price_factors.py
+│   │   ├── momentum_factors.py
+│   │   ├── volatility_factors.py
+│   │   ├── volume_factors.py
+│   │   ├── factor_calculator.py
+│   │   └── run_factor_calculation.py
+│   ├── llm/                       # V1.x AI 分析预留
+│   ├── qlib_lab/                  # V1.7+ Qlib 预留
+│   ├── report/                    # V1.x 报告预留
+│   ├── scoring/                   # V0.8+ 评分预留
 │   ├── storage/
 │   │   ├── duckdb_repo.py
 │   │   ├── parquet_repo.py
-│   │   └── schema.py
+│   │   └── schema.py              # 17 张表 DDL
+│   ├── strategy/                  # V1.0+ 策略预留
 │   ├── universe/
-│   └── ...
+│   │   ├── stock_pool.py          # V0.2 股票池 + V0.5.1 resolve_sector
+│   │   ├── filters.py
+│   │   └── repair_sector.py       # V0.5.1 批量补齐行业 CLI
+│   └── utils/
 ├── ui/
-│   └── streamlit_app.py
+│   └── streamlit_app.py           # 8 个标签页
 ├── tests/
-│   ├── test_akshare_client.py      # V0.3 AkShare 客户端测试
-│   ├── test_cli_output_safety.py   # V0.3 CLI 输出安全性测试
-│   ├── test_encoding_integrity.py  # 编码与 CSV 完整性测试
-│   ├── test_historical_loader.py   # V0.3 历史数据加载器测试
-│   ├── test_update_log.py          # V0.3 更新日志测试
-│   ├── test_parquet_repo.py        # V0.3 Parquet 仓库测试
-│   ├── test_daily_incremental.py   # V0.4 每日增量更新测试
-│   ├── test_main_startup.py        # V0.4/V0.5 启动与版本文案测试
-│   ├── test_duplicate_checker.py   # V0.5 重复数据检查测试
-│   ├── test_missing_date_checker.py # V0.5 缺失日期检查测试
-│   ├── test_price_checker.py       # V0.5 价格异常检查测试
-│   ├── test_quality_report.py      # V0.5 质量报告测试
+│   ├── conftest.py
+│   ├── test_akshare_client.py     # V0.3 + V0.5.1
+│   ├── test_base_factor.py        # V0.7
+│   ├── test_cli_output_safety.py
+│   ├── test_daily_incremental.py
+│   ├── test_date_range_repair.py  # V0.6
+│   ├── test_duplicate_checker.py
+│   ├── test_duplicate_repair.py   # V0.6
+│   ├── test_encoding_integrity.py
+│   ├── test_factor_calculator.py  # V0.7
+│   ├── test_filters.py
+│   ├── test_historical_loader.py
+│   ├── test_main_startup.py
+│   ├── test_missing_date_checker.py
+│   ├── test_momentum_factors.py   # V0.7
+│   ├── test_parquet_repo.py
+│   ├── test_parquet_repair.py     # V0.6
+│   ├── test_price_checker.py
+│   ├── test_price_factors.py      # V0.7
+│   ├── test_quality_report.py
+│   ├── test_repair_log.py         # V0.6
+│   ├── test_repair_planner.py     # V0.6
+│   ├── test_run_data_repair.py    # V0.6
+│   ├── test_run_factor_calculation.py # V0.7
 │   ├── test_stock_pool.py
-│   └── test_filters.py
-└── docs/
-    └── roadmap.md
+│   ├── test_update_log.py
+│   ├── test_volatility_factors.py # V0.7
+│   └── test_volume_factors.py     # V0.7
+├── docs/
+│   ├── roadmap.md
+│   ├── architecture.md
+│   └── product_design.md
+└── logs/                          # V0.6 日志（不提交）
 ```
 
 ## 后续版本路线
