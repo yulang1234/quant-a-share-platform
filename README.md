@@ -18,6 +18,28 @@
 - V0.7 基础因子计算：完成
 - V0.8 因子标准化与排名：完成
 - V0.9 因子有效性分析：完成
+- V1.0 TopK 选股策略：完成
+
+## V1.0 已完成内容
+
+V1.0 基于 V0.8 排名和 V0.9 有效性分析，实现单因子/多因子加权 TopK 候选股票生成。
+本版本只生成候选股票，不做回测、资金曲线、交易。
+
+### TopK 选股策略
+```bash
+# 默认单因子策略
+python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20 --limit 5
+
+# 临时单因子
+python -m src.strategy.run_topk_strategy --factor-name return_20d --top-k 20 --limit 5
+
+# 临时多因子
+python -m src.strategy.run_topk_strategy --factor-weights "{\"return_20d\":0.5,\"momentum_20d\":0.5}" --top-k 20 --limit 5
+```
+说明：V1.0 只生成候选股票 / V1.1 才做回测 / 不构成投资建议 / 不调 AkShare / 不写 Parquet
+
+### 测试
+- pytest: 492 passed
 
 ## V0.9 已完成内容
 
