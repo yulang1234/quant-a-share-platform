@@ -333,8 +333,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -1357,5 +1357,50 @@ with t_backtest_eval:
             "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt\n\n"
             "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt --risk-free-rate 0.02\n\n"
             "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt --start-date 20200101 --end-date 20231231",
+            language="bash",
+        )
+
+
+# ======================================================================
+#  TAB: 多因子评分 (V1.3)
+# ======================================================================
+
+with t_scoring:
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>"
+        "V1.3 多因子评分系统 -- 综合评分/排名/因子明细。不构成投资建议。</div>",
+        unsafe_allow_html=True,
+    )
+    try:
+        from src.storage.duckdb_repo import fetch_stock_composite_score, fetch_stock_score_detail, query_df
+        comp = fetch_stock_composite_score(limit=20)
+        det = fetch_stock_score_detail(limit=20)
+        total = query_df("SELECT COUNT(*) AS c FROM stock_composite_score")
+        total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
+        models = query_df("SELECT COUNT(DISTINCT model_name) AS c FROM stock_composite_score")
+        model_count = int(models.iloc[0]["c"]) if not models.empty else 0
+    except Exception:
+        comp = pd.DataFrame(); det = pd.DataFrame(); total_rows = model_count = 0
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("综合评分行数", total_rows)
+    k2.metric("评分模型数", model_count)
+    k3.metric("评分明细行", len(det))
+
+    if not comp.empty:
+        st.caption("最近综合评分 TopK")
+        dc = [c for c in ["model_name","trade_date","stock_code","composite_score","score_rank","factor_coverage_ratio"] if c in comp.columns]
+        st.dataframe(comp[dc].head(20), use_container_width=True, height=250, key="df_scoring_sample", selection_mode="single-row", on_select="ignore")
+    else:
+        st.info("暂无评分数据。")
+
+    with st.expander("命令行示例"):
+        st.code(
+            "# 动量质量评分模型\n"
+            "python -m src.scoring.run_scoring --model momentum_quality_score --limit 5\n\n"
+            "# 趋势量能评分模型\n"
+            "python -m src.scoring.run_scoring --model trend_volume_score --limit 5\n\n"
+            "# 低波稳定评分模型\n"
+            "python -m src.scoring.run_scoring --model low_vol_stable_score --trade-date 20260703",
             language="bash",
         )

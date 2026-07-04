@@ -590,6 +590,60 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (backtest_name, year)
     );
     """,
+    # 34. Score model config (V1.3)
+    """
+    CREATE TABLE IF NOT EXISTS score_model_config (
+        model_name                  VARCHAR(64)  NOT NULL,
+        factor_weights              VARCHAR(2048),
+        score_method                VARCHAR(32) DEFAULT 'percentile_rank_weighted_sum',
+        min_avg_rank_ic             DOUBLE,
+        min_positive_rank_ic_ratio  DOUBLE,
+        min_avg_group_spread        DOUBLE,
+        is_active                   BOOLEAN DEFAULT TRUE,
+        description                 VARCHAR(512),
+        created_at                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (model_name)
+    );
+    """,
+    # 35. Stock composite score (V1.3)
+    """
+    CREATE TABLE IF NOT EXISTS stock_composite_score (
+        model_name              VARCHAR(64)  NOT NULL,
+        trade_date              DATE         NOT NULL,
+        stock_code              VARCHAR(6)   NOT NULL,
+        composite_score         DOUBLE,
+        score_rank              INTEGER,
+        percentile_score        DOUBLE,
+        expected_factor_count   INTEGER,
+        available_factor_count  INTEGER,
+        missing_factor_count    INTEGER,
+        factor_coverage_ratio   DOUBLE,
+        universe_name           VARCHAR(64) DEFAULT 'core_500',
+        created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (model_name, trade_date, stock_code, universe_name)
+    );
+    """,
+    # 36. Stock score detail (V1.3)
+    """
+    CREATE TABLE IF NOT EXISTS stock_score_detail (
+        model_name              VARCHAR(64)  NOT NULL,
+        trade_date              DATE         NOT NULL,
+        stock_code              VARCHAR(6)   NOT NULL,
+        factor_name             VARCHAR(64)  NOT NULL,
+        raw_value               DOUBLE,
+        factor_score            DOUBLE,
+        factor_weight           DOUBLE,
+        weighted_score          DOUBLE,
+        factor_rank_value       BIGINT,
+        factor_percentile_rank  DOUBLE,
+        universe_name           VARCHAR(64) DEFAULT 'core_500',
+        created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (model_name, trade_date, stock_code, factor_name, universe_name)
+    );
+    """,
 ]
 
 

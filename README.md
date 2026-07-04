@@ -21,7 +21,20 @@
 - V1.0 TopK 选股策略：完成
 - V1.1 基础回测引擎：完成
 - V1.2 回测评价体系：完成
-- V1.3 多因子评分系统：下一步
+- V1.3 多因子评分系统：完成
+
+## V1.3 已完成内容
+
+V1.3 基于 V0.8 排名和 V0.9 分析，实现可配置多因子综合评分（percentile_rank 加权）。
+支持因子有效性过滤和覆盖度统计。不构成投资建议。
+
+### 多因子评分系统
+```bash
+python -m src.scoring.run_scoring --model momentum_quality_score --limit 5
+python -m src.scoring.run_scoring --model trend_volume_score --limit 5
+python -m src.scoring.run_scoring --model low_vol_stable_score --trade-date 20260703
+```
+说明：V1.3 只做多因子综合评分 / V1.4 做可视化升级 / V1.5 做每日任务 / 不调 AkShare / 不写 Parquet。pytest: 533 passed.
 
 ## V1.2 已完成内容
 
@@ -608,8 +621,9 @@ quant-a-share-platform/
 - V1.0 TopK 选股策略 [完成]
 - V1.1 基础回测引擎 [完成]
 - V1.2 回测评价体系 [完成]
-- V1.3 多因子评分系统 [下一步]
-- V1.4 Streamlit 可视化平台升级 [规划中]
+- V1.3 多因子评分系统 [完成]
+- V1.4 Streamlit 可视化平台升级 [下一步]
+- V1.5 每日任务流水线 [规划中]
 
 ## 免责声明
 

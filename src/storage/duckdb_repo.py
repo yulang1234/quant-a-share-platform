@@ -1057,3 +1057,36 @@ def upsert_backtest_yearly_return(df: pd.DataFrame) -> int:
 
 def fetch_backtest_yearly_return(backtest_name=None, limit=None) -> pd.DataFrame:
     return _generic_fetch("backtest_yearly_return", {"backtest_name": backtest_name} if backtest_name else {}, limit)
+
+
+# ── V1.3 scoring helpers ──────────────────────────────────────────────────
+
+def upsert_score_model_config(df: pd.DataFrame) -> int:
+    return _generic_upsert("score_model_config", ["model_name"], df)
+
+def fetch_score_model_config(model_name=None, active_only=True) -> pd.DataFrame:
+    f = {"model_name": model_name} if model_name else {}
+    df = _generic_fetch("score_model_config", f)
+    if active_only and not df.empty and "is_active" in df.columns:
+        df = df[df["is_active"] == True]  # noqa: E712
+    return df
+
+def upsert_stock_composite_score(df: pd.DataFrame) -> int:
+    return _generic_upsert("stock_composite_score", ["model_name", "trade_date", "stock_code", "universe_name"], df)
+
+def fetch_stock_composite_score(model_name=None, trade_date=None, start_date=None, end_date=None, stock_code=None, limit=None) -> pd.DataFrame:
+    f = {}
+    if model_name: f["model_name"] = model_name
+    if trade_date: f["trade_date"] = trade_date
+    if stock_code: f["stock_code"] = stock_code
+    return _generic_fetch("stock_composite_score", f, limit)
+
+def upsert_stock_score_detail(df: pd.DataFrame) -> int:
+    return _generic_upsert("stock_score_detail", ["model_name", "trade_date", "stock_code", "factor_name", "universe_name"], df)
+
+def fetch_stock_score_detail(model_name=None, trade_date=None, stock_code=None, limit=None) -> pd.DataFrame:
+    f = {}
+    if model_name: f["model_name"] = model_name
+    if trade_date: f["trade_date"] = trade_date
+    if stock_code: f["stock_code"] = stock_code
+    return _generic_fetch("stock_score_detail", f, limit)
