@@ -127,7 +127,9 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (id)
     );
     """,
-    # 8. Daily factor values
+    # 8. Daily factor values (EAV style)
+    #    Reserved — V0.7 uses stock_daily_factors (wide table) instead.
+    #    This table may be deprecated in a future migration.
     """
     CREATE TABLE IF NOT EXISTS factor_daily (
         stock_code      VARCHAR(6)   NOT NULL,
@@ -139,6 +141,7 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
     # 9. Daily factor rank
+    #    Reserved for V0.8: factor standardization & ranking.
     """
     CREATE TABLE IF NOT EXISTS factor_rank_daily (
         stock_code      VARCHAR(6)   NOT NULL,
@@ -151,6 +154,7 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
     # 10. Composite stock score
+    #     Reserved for V0.8+: multi-factor composite scoring.
     """
     CREATE TABLE IF NOT EXISTS stock_score_daily (
         stock_code      VARCHAR(6)   NOT NULL,
@@ -162,7 +166,8 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (stock_code, trade_date, score_method)
     );
     """,
-    # 11. Daily candidate stocks (selected by strategy)
+    # 11. Daily candidate stocks
+    #     Reserved for V1.0: strategy-selected candidate stocks.
     """
     CREATE TABLE IF NOT EXISTS stock_candidate_daily (
         stock_code      VARCHAR(6)   NOT NULL,
@@ -176,6 +181,7 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
     # 12. Backtest run metadata
+    #     Reserved for V1.0+: backtest engine.
     """
     CREATE TABLE IF NOT EXISTS backtest_run (
         run_id          BIGINT,
@@ -194,6 +200,7 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
     # 13. Backtest NAV history
+    #     Reserved for V1.0+: backtest NAV tracking.
     """
     CREATE TABLE IF NOT EXISTS backtest_nav (
         run_id          BIGINT       NOT NULL,
@@ -206,6 +213,7 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
     # 14. Backtest trade log
+    #     Reserved for V1.0+: backtest trade logging.
     """
     CREATE TABLE IF NOT EXISTS backtest_trade (
         trade_id        BIGINT,
@@ -222,6 +230,7 @@ CREATE_TABLE_SQL: list[str] = [
     );
     """,
     # 15. Qlib / ML model scores
+    #     Reserved for V1.7+: Qlib Alpha158 / Alpha360 model integration.
     """
     CREATE TABLE IF NOT EXISTS qlib_model_score_daily (
         stock_code      VARCHAR(6)   NOT NULL,
@@ -255,6 +264,59 @@ CREATE_TABLE_SQL: list[str] = [
         finished_at     TIMESTAMP,
         created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (repair_id)
+    );
+    """,
+    # 17. Daily stock factors — wide table (V0.7)
+    """
+    CREATE TABLE IF NOT EXISTS stock_daily_factors (
+        stock_code      VARCHAR(6)   NOT NULL,
+        trade_date      DATE         NOT NULL,
+        factor_date     DATE,
+        source_adj      VARCHAR(8)  DEFAULT 'qfq',
+        return_1d       DOUBLE,
+        return_5d       DOUBLE,
+        return_10d      DOUBLE,
+        return_20d      DOUBLE,
+        return_60d      DOUBLE,
+        momentum_5d     DOUBLE,
+        momentum_10d    DOUBLE,
+        momentum_20d    DOUBLE,
+        momentum_60d    DOUBLE,
+        ma5             DOUBLE,
+        ma10            DOUBLE,
+        ma20            DOUBLE,
+        ma60            DOUBLE,
+        ma120           DOUBLE,
+        close_ma5_ratio     DOUBLE,
+        close_ma10_ratio    DOUBLE,
+        close_ma20_ratio    DOUBLE,
+        close_ma60_ratio    DOUBLE,
+        close_ma120_ratio   DOUBLE,
+        volatility_5d   DOUBLE,
+        volatility_10d  DOUBLE,
+        volatility_20d  DOUBLE,
+        volatility_60d  DOUBLE,
+        volume_ma5      DOUBLE,
+        volume_ma20     DOUBLE,
+        volume_ma60     DOUBLE,
+        volume_ratio_5_20   DOUBLE,
+        volume_ratio_20_60  DOUBLE,
+        amount_ma5      DOUBLE,
+        amount_ma20     DOUBLE,
+        amount_ma60     DOUBLE,
+        turnover_ma5    DOUBLE,
+        turnover_ma20   DOUBLE,
+        turnover_ma60   DOUBLE,
+        turnover_ratio_5_20 DOUBLE,
+        high_20d        DOUBLE,
+        low_20d         DOUBLE,
+        price_position_20d  DOUBLE,
+        high_60d        DOUBLE,
+        low_60d         DOUBLE,
+        price_position_60d  DOUBLE,
+        created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (stock_code, trade_date)
     );
     """,
 ]

@@ -1,40 +1,50 @@
 """
-Base factor interface — all factor calculators inherit from this.
+Base factor utilities — validation, division, column helpers.
 
-V0.1: abstract skeleton.
+V0.7: pragmatic functional style, not abstract OOP.
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
+import numpy as np
 import pandas as pd
 
 
-class BaseFactor(ABC):
-    """Abstract factor calculator.
+def validate_factor_input(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate and normalise factor input DataFrame.
 
-    Subclasses implement ``compute()`` which receives a daily DataFrame and
-    returns a Series of factor values indexed by (stock_code, trade_date).
-
-    TODO(V0.7): add factor metadata (name, category, description).
+    Returns a sorted copy — never modifies the original.
     """
+    if df is None or df.empty:
+        raise ValueError("Input DataFrame is empty")
+    if "close" not in df.columns:
+        raise ValueError("Input DataFrame missing 'close' column")
 
-    name: str = "base_factor"
-    category: str = "uncategorised"
+    result = df.copy()
+    if "stock_code" in result.columns:
+        result["stock_code"] = result["stock_code"].astype(str).str.zfill(6)
+    if "trade_date" in result.columns:
+        result["trade_date"] = pd.to_datetime(result["trade_date"])
 
-    @abstractmethod
-    def compute(self, df: pd.DataFrame) -> pd.Series:
-        """Compute the factor values.
+    sort_cols = [c for c in ("stock_code", "trade_date") if c in result.columns]
+    if sort_cols:
+        result = result.sort_values(sort_cols).reset_index(drop=True)
+    return result
 
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Must contain at least: stock_code, trade_date, close, volume, …
 
-        Returns
-        -------
-        pd.Series
-            Factor values with a ``pd.MultiIndex`` of (stock_code, trade_date).
-        """
-        ...
+def safe_divide(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    """Element-wise division: numerator / denominator.
+
+    Returns NaN where denominator is 0, NaN, or inf.
+    """
+    denominator = denominator.replace([0, np.inf, -np.inf], np.nan)
+    return numerator / denominator
+
+
+def ensure_factor_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Ensure *columns* exist in *df*, filling with NaN where missing."""
+    df = df.copy()
+    for col in columns:
+        if col not in df.columns:
+            df[col] = np.nan
+    return df

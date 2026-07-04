@@ -689,3 +689,93 @@ def replace_daily_range(
         inserted, table_name, stock_code,
     )
     return inserted
+
+
+# ── V0.7 factor helpers ─────────────────────────────────────────────────
+
+_FACTORS_TABLE = "stock_daily_factors"
+
+
+def upsert_daily_factors(df: pd.DataFrame) -> int:
+    """Upsert rows into ``stock_daily_factors``.
+
+    Uses delete-then-insert by (stock_code, trade_date) so that repeated
+    runs are idempotent.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must contain at least ``stock_code`` and ``trade_date``.
+
+    Returns
+    -------
+    int
+        Number of rows inserted (0 if df is empty).
+    """
+    if df is None or df.empty:
+        return 0
+
+    con = get_connection()
+
+    if "stock_code" in df.columns:
+        df = df.copy()
+        df["stock_code"] = df["stock_code"].astype(str).str.zfill(6)
+
+    table_cols = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'main' AND table_name = ?",
+        [_FACTORS_TABLE],
+    ).fetchdf()["column_name"].tolist()
+
+    insert_cols = [c for c in df.columns if c in table_cols]
+    if not insert_cols:
+        return 0
+    df_out = df[insert_cols]
+
+    temp = "__upsert_factors_temp__"
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    con.execute(f"CREATE TEMPORARY TABLE {temp} AS SELECT * FROM df_out")
+
+    con.execute(f"""
+        DELETE FROM {_FACTORS_TABLE}
+        WHERE (stock_code, trade_date) IN (
+            SELECT stock_code, trade_date FROM {temp}
+        )
+    """)
+
+    cols = ", ".join(insert_cols)
+    con.execute(f"INSERT INTO {_FACTORS_TABLE} ({cols}) SELECT {cols} FROM {temp}")
+    con.execute(f"DROP TABLE IF EXISTS {temp}")
+    return len(df_out)
+
+
+def fetch_daily_factors(
+    stock_code: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int | None = None,
+) -> pd.DataFrame:
+    """Query rows from ``stock_daily_factors``.
+
+    Returns an empty DataFrame if the table does not exist.
+    """
+    try:
+        conditions: list[str] = []
+        params: list[Any] = []
+        if stock_code:
+            conditions.append("stock_code = ?")
+            params.append(str(stock_code).zfill(6))
+        if start_date:
+            conditions.append("trade_date >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("trade_date <= ?")
+            params.append(end_date)
+
+        where = " AND ".join(conditions) if conditions else "1=1"
+        sql = f"SELECT * FROM {_FACTORS_TABLE} WHERE {where} ORDER BY stock_code, trade_date"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        return query_df(sql, params)
+    except Exception:
+        return pd.DataFrame()

@@ -15,6 +15,38 @@
 - V0.5 数据质量检查：完成
 - V0.5.1 板块/行业自动获取 & 多源补齐：完成
 - V0.6 数据修复与重跑：完成
+- V0.7 基础因子计算：完成
+
+## V0.7 已完成内容
+
+V0.7 基于 V0.3/V0.4 落库的 qfq 日线数据，计算 42 个基础量化因子并写入 DuckDB。
+
+本版本只做因子计算，不做标准化、排名、有效性分析。
+
+### 基础因子计算
+```bash
+# 小批量计算基础因子
+python -m src.factors.run_factor_calculation --pool core_500 --limit 5
+
+# 单只股票计算基础因子
+python -m src.factors.run_factor_calculation --stock-code 000001
+
+# 指定日期范围计算
+python -m src.factors.run_factor_calculation --stock-code 000001 --start-date 20200101 --end-date 20231231
+```
+
+说明：
+- V0.7 默认使用 qfq 前复权日线数据
+- V0.7 只计算基础因子，结果写入 `stock_daily_factors`
+- 没有 qfq 数据时会 skipped
+- V0.8 才做因子标准化与排名
+- V0.9 才做因子有效性分析
+- 不写 Parquet
+- 不调用 AkShare
+- 不修改 `stock_daily_qfq` / `stock_daily_raw` 原始行情数据
+
+### 测试
+- pytest: 425 passed（含 V0.7 因子测试）
 
 ## V0.6 已完成内容
 
@@ -377,8 +409,8 @@ quant-a-share-platform/
 - V0.5 数据质量检查 [完成]
 - V0.5.1 板块/行业自动获取 & 多源补齐 [完成]
 - V0.6 数据修复与重跑 [完成]
-- V0.7 基础因子计算 [下一步]
-- V0.8 因子标准化与排名
+- V0.7 基础因子计算 [完成]
+- V0.8 因子标准化与排名 [下一步]
 - V0.9 因子有效性分析
 - V1.0 TopK 选股策略
 

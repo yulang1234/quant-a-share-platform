@@ -1,24 +1,23 @@
 """
-Momentum factor calculations (e.g. N-day return, RSI).
+Momentum factor calculations — N-day price momentum.
 
-V0.1: skeleton only.
+V0.7: momentum_Nd = close / close.shift(N) - 1
 """
 
 from __future__ import annotations
 
 import pandas as pd
 
-from src.factors.base_factor import BaseFactor
+from src.factors.base_factor import validate_factor_input
 
 
-class MomentumFactor(BaseFactor):
-    """N-day cumulative return as a momentum signal.
+def calculate_momentum_factors(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate momentum_Nd factors."""
+    df = validate_factor_input(df)
+    result = df[["stock_code", "trade_date"]].copy()
 
-    TODO(V0.7): implement configurable windows (5, 20, 60 days).
-    """
+    for n in (5, 10, 20, 60):
+        shifted = df.groupby("stock_code")["close"].shift(n)
+        result[f"momentum_{n}d"] = (df["close"] / shifted) - 1
 
-    name = "momentum_20d"
-    category = "momentum"
-
-    def compute(self, df: pd.DataFrame) -> pd.Series:
-        raise NotImplementedError("MomentumFactor is a V0.7 feature.")
+    return result
