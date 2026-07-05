@@ -1,5 +1,99 @@
 # Quant A-Share Research Platform
 
+## 当前版本：V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库
+
+V1.4.1 完成了元数据库、多数据源 Provider 架构、Provider fallback、调用日志、健康状态、CLI 检查工具，以及 Streamlit “数据源”健康度只读页面。
+
+### V1.4.1 已完成
+
+- 元数据库：支持 PostgreSQL；未配置 `DATABASE_URL` 时自动 fallback 到 `data/meta/quant_meta.db`。
+- 元数据表：`security_master`、`universe_config`、`universe_member`、`data_provider_config`、`data_provider_health`、`data_provider_call_log`。
+- Provider 架构：`LocalCacheProvider`、`MiniQMTProvider`、`AkShareProvider`、`TushareProvider`。
+- Provider fallback：LocalCache 优先，MiniQMT / Tushare 不可用时自动跳过，AkShare 作为补充源。
+- Provider 日志与健康状态：记录 success / failed / empty / skipped，并限制错误信息长度。
+- CLI：`check_providers`、`fetch_daily`、`provider_stats`、`test_miniqmt`。
+- Streamlit：新增“数据源”tab，只读展示元数据库、Provider 健康、调用统计和最近错误。
+
+### 数据存储边界
+
+- PostgreSQL / SQLite：只存元数据、Provider 配置、Provider 健康、Provider 调用日志、universe 和后续任务状态摘要。
+- DuckDB：本地研究查询引擎。
+- Parquet：历史行情和研究数据湖。
+- 当前不把大规模行情明细、因子宽表、Qlib 特征明细、模型预测明细、回测逐日明细写入 PostgreSQL。
+
+### DATABASE_URL 配置
+
+`.env` 示例必须使用占位符，不要写真实账号或密码：
+
+```env
+DATABASE_URL=postgresql+psycopg://<user>:<password>@localhost:5432/quant_platform
+```
+
+未配置 `DATABASE_URL` 时，系统使用 SQLite fallback：
+
+```text
+data/meta/quant_meta.db
+```
+
+初始化元数据库：
+
+```bash
+python -m src.db.migrations init_meta_db
+```
+
+### Provider fallback 顺序
+
+- `daily_raw`：LocalCache > MiniQMT > Tushare > AkShare
+- `daily_qfq`：LocalCache > Tushare > AkShare > MiniQMT
+- `realtime_quote`：MiniQMT > AkShare
+- `trading_calendar`：MiniQMT > Tushare > AkShare
+- `stock_basic`：MiniQMT > Tushare > AkShare
+
+### Provider CLI
+
+```bash
+python -m src.data_sources.check_providers
+python -m src.data_sources.fetch_daily --stock-code 000001.SZ --start-date 20260101 --end-date 20260105 --adj qfq --no-save
+python -m src.data_sources.provider_stats
+python -m src.data_sources.test_miniqmt --stock-code 000001.SZ --start-date 20240101 --end-date 20240701
+```
+
+### MiniQMT / AkShare / Tushare 说明
+
+- MiniQMT 当前只接 `xtdata`，不接 `xttrader`；未安装或未启动时显示 disabled / down，不影响系统启动。
+- AkShareProvider 是补充源，不再作为唯一主源；不建议直接依赖 AkShare 做无保护的全市场批量拉取。
+- Tushare 当前是 token 骨架；未配置 `TUSHARE_TOKEN` 时自动 disabled，后续可作为备用源和校验源。
+
+### Streamlit 数据源页面
+
+- 新增“数据源”tab。
+- 页面只读，不执行真实数据拉取。
+- 页面不展示完整 `DATABASE_URL`、数据库密码或 `TUSHARE_TOKEN`。
+- 页面展示 Provider 健康、调用统计、最近错误和操作提示。
+
+### 当前明确未实现
+
+- 未迁移 `historical_loader.py` 到 `MarketDataService`。
+- 未迁移 `daily_incremental.py` 到 `MarketDataService`。
+- 未接 Qlib。
+- 未接 Alpha158 / Alpha360。
+- 未训练模型。
+- 未做自动交易。
+- 未接 `xttrader`。
+- 未接 ClickHouse。
+- 未做全市场分钟线。
+- 未做历史数据补齐任务队列。
+- 未做覆盖率报告和缺口修复。
+
+### 下一版本 V1.4.2 计划
+
+- 历史数据补齐。
+- 任务队列。
+- 覆盖率报告。
+- 缺口修复。
+- 旧数据更新链路逐步接入 `MarketDataService`。
+- 按交易日历判断缺失，不按自然日判断。
+
 面向 A 股 500 支核心股票池的个人量化研究平台。
 
 ## 项目定位
@@ -39,7 +133,7 @@ streamlit run ui/streamlit_app.py
 - 页面只展示已有结果，不直接执行全量计算
 - 页面不调用 AkShare、不写 Parquet
 - 页面不修改原始行情、因子、策略、回测、评分结果表
-- V1.5 才做每日任务流水线
+- V1.4.2 才做数据覆盖率、缺口修复和补齐任务队列
 - 所有结果仅用于个人量化研究，不构成投资建议
 
 ### 测试
@@ -645,7 +739,9 @@ quant-a-share-platform/
 - V1.2 回测评价体系 [完成]
 - V1.3 多因子评分系统 [完成]
 - V1.4 Streamlit 可视化平台升级 [完成]
-- V1.5 每日任务流水线 [下一步]
+- V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库 [完成]
+- V1.4.2 历史数据补齐、任务队列、覆盖率报告、缺口修复 [下一步]
+- V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 
 ## 免责声明

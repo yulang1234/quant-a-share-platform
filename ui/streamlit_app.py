@@ -31,6 +31,15 @@ from src.universe.stock_pool import (
     validate_stock_code,
 )
 from src.universe.filters import apply_basic_filters, filter_st_stocks
+from ui.components.ui_helpers import (
+    DEFAULT_DISPLAY_LIMIT,
+    add_stock_name,
+    format_display_df,
+    show_table,
+    show_empty,
+    render_cmd,
+    FACTOR_CN,
+)
 from src.data_quality.quality_report import (
     count_quality_issues,
     get_quality_issue_summary,
@@ -265,6 +274,109 @@ _COL_CN = {
     "issue_type": "问题类型",
     "issue_level": "严重程度",
     "issue_detail": "问题详情",
+    # V0.7-V1.4 factor/strategy/backtest/evaluation/scoring columns
+    "factor_name": "因子名称",
+    "factor_date": "因子日期",
+    "source_adj": "数据源",
+    "raw_value": "原始值",
+    "clipped_value": "去极值",
+    "zscore_value": "标准化值",
+    "direction_value": "方向值",
+    "rank_value": "排名",
+    "percentile_rank": "百分位排名",
+    "factor_direction": "因子方向",
+    "rank_method": "排名方法",
+    "universe_name": "股票池",
+    "strategy_name": "策略名称",
+    "strategy_type": "策略类型",
+    "trade_date": "交易日期",
+    "rank_in_strategy": "策略内排名",
+    "composite_score": "综合得分",
+    "factor_count": "因子数量",
+    "selected_reason": "入选原因",
+    "backtest_name": "回测名称",
+    "rebalance_date": "调仓日期",
+    "weight": "权重",
+    "portfolio_return": "组合收益",
+    "holding_count": "持仓数",
+    "initial_cash": "初始资金",
+    "equity": "净值",
+    "initial_equity": "初始净值",
+    "final_equity": "最终净值",
+    "total_return": "总收益",
+    "annualized_return": "年化收益",
+    "annualized_volatility": "年化波动",
+    "max_drawdown": "最大回撤",
+    "sharpe_ratio": "夏普比率",
+    "calmar_ratio": "卡玛比率",
+    "win_rate": "胜率",
+    "avg_daily_return": "日均收益",
+    "best_daily_return": "最佳日收益",
+    "worst_daily_return": "最差日收益",
+    "trading_days": "交易天数",
+    "risk_free_rate": "无风险利率",
+    "model_name": "模型名称",
+    "score_rank": "评分排名",
+    "percentile_score": "百分位得分",
+    "expected_factor_count": "预期因子数",
+    "available_factor_count": "可用因子数",
+    "missing_factor_count": "缺失因子数",
+    "factor_coverage_ratio": "因子覆盖率",
+    "factor_score": "因子得分",
+    "factor_weight": "因子权重",
+    "weighted_score": "加权得分",
+    "factor_rank_value": "因子排名值",
+    "factor_percentile_rank": "因子百分位",
+    "forward_days": "未来天数",
+    "forward_return": "未来收益",
+    "ic": "IC",
+    "rank_ic": "Rank IC",
+    "sample_count": "样本数",
+    "group_id": "分组",
+    "group_count": "组数",
+    "avg_forward_return": "平均未来收益",
+    "median_forward_return": "中位未来收益",
+    "stock_count": "股票数",
+    "avg_ic": "平均IC",
+    "avg_rank_ic": "平均RankIC",
+    "ic_std": "IC标准差",
+    "rank_ic_std": "RankIC标准差",
+    "ic_ir": "IC IR",
+    "rank_ic_ir": "RankIC IR",
+    "positive_ic_ratio": "IC胜率",
+    "positive_rank_ic_ratio": "RankIC胜率",
+    "avg_top_group_return": "高分组均收益",
+    "avg_bottom_group_return": "低分组均收益",
+    "avg_group_spread": "分组收益差",
+    "trade_date_count": "交易日数",
+    "repair_action": "修复动作",
+    "repair_id": "修复ID",
+    "dry_run": "试运行",
+    "confirm": "确认执行",
+    "affected_rows": "影响行数",
+    "rebalance_frequency": "调仓频率",
+    "price_type": "价格类型",
+    "description": "描述",
+    "is_active": "启用",
+    "score_method": "评分方法",
+    "factor_weights": "因子权重",
+    "drawdown": "回撤",
+    "running_max_equity": "最高净值",
+    "year_month": "年月",
+    "monthly_return": "月度收益",
+    "start_equity": "期初净值",
+    "end_equity": "期末净值",
+    "year": "年份",
+    "yearly_return": "年度收益",
+    "period_key": "期间",
+    "period_return": "期间收益",
+    "close": "收盘价",
+    "future_close": "未来收盘价",
+    "top_k": "TopK",
+    "min_avg_rank_ic": "最低AvgRankIC",
+    "min_positive_rank_ic_ratio": "最低RankIC胜率",
+    "min_group_spread": "最低分组差",
+    "pool_name": "股票池名",
 }
 
 _TASK_CN = {"historical_load": "历史初始化", "daily_incremental": "增量更新"}
@@ -333,8 +445,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -499,11 +611,11 @@ with t_overview:
                 'margin-bottom:0.1rem;">最近更新</div>',
                 unsafe_allow_html=True,
             )
-            st.caption("最近 10 条任务记录")
+            st.caption("最近任务记录")
             try:
                 from src.data_update.update_log import get_recent_update_logs
 
-                logs = get_recent_update_logs(limit=10)
+                logs = get_recent_update_logs(limit=DEFAULT_DISPLAY_LIMIT)
                 if not logs.empty:
                     cols = ["stock_code", "task_type", "adj_type", "status", "row_count", "started_at"]
                     cols = [c for c in cols if c in logs.columns]
@@ -776,8 +888,8 @@ with t_hist:
                 st.markdown("暂无数据")
         with st.expander("命令"):
             st.code(
-                "python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj all\n"
-                "python -m src.data_update.retry_failed --limit 10",
+                "python -m src.data_update.historical_loader --pool core_500 --adj all\n"
+                "python -m src.data_update.retry_failed",
                 language="bash",
             )
 
@@ -785,7 +897,7 @@ with t_hist:
         with st.container(border=True):
             st.caption("最近日志")
             try:
-                logs = get_recent_update_logs(limit=30)
+                logs = get_recent_update_logs(limit=DEFAULT_DISPLAY_LIMIT)
                 if not logs.empty:
                     st.dataframe(
                         fmt_log(logs[["stock_code", "adj_type", "status", "row_count", "started_at"]]),
@@ -843,8 +955,8 @@ with t_daily:
                 st.markdown("暂无数据")
         with st.expander("命令"):
             st.code(
-                "python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj all\n"
-                "python -m src.data_update.daily_incremental --pool core_500 --limit 3 --start-date 20260701 --end-date 20260703 --force",
+                "python -m src.data_update.daily_incremental --pool core_500 --adj all\n"
+                "python -m src.data_update.daily_incremental --pool core_500 --start-date 20260701 --end-date 20260703 --force",
                 language="bash",
             )
 
@@ -852,7 +964,7 @@ with t_daily:
         with st.container(border=True):
             st.caption("最近日志")
             try:
-                logs = get_recent_update_logs(limit=30)
+                logs = get_recent_update_logs(limit=DEFAULT_DISPLAY_LIMIT)
                 if not logs.empty:
                     inc = logs[logs["task_type"] == "daily_incremental"] if "task_type" in logs.columns else logs
                     if not inc.empty:
@@ -981,9 +1093,9 @@ with t_quality:
 
         with st.expander("命令"):
             st.code(
-                "python -m src.data_quality.quality_report --adj raw --limit 5\n"
-                "python -m src.data_quality.quality_report --adj qfq --limit 5\n"
-                "python -m src.data_quality.quality_report --adj all --limit 20\n"
+                "python -m src.data_quality.quality_report --adj raw\n"
+                "python -m src.data_quality.quality_report --adj qfq\n"
+                "python -m src.data_quality.quality_report --adj all\n"
                 "python -m src.data_quality.quality_report --stock-code 000001 --adj raw\n"
                 "python -m src.data_quality.quality_report --adj all --no-write",
                 language="bash",
@@ -993,7 +1105,7 @@ with t_quality:
         with st.container(border=True):
             st.caption("最近问题")
             try:
-                issues = get_recent_quality_issues(limit=20)
+                issues = get_recent_quality_issues(limit=DEFAULT_DISPLAY_LIMIT)
                 if not issues.empty:
                     display_cols = [
                         "stock_code", "check_date", "issue_type",
@@ -1013,7 +1125,7 @@ with t_quality:
                         on_select="ignore",
                     )
                 else:
-                    st.markdown("暂无质量问题记录")
+                    show_empty("暂无数据质量检查结果。")
             except Exception as e:
                 st.markdown(f"加载失败：{e}")
 
@@ -1032,7 +1144,7 @@ with t_repair:
     try:
         from src.data_repair.repair_log import get_recent_repair_logs, get_repair_summary
         summary = get_repair_summary()
-        logs = get_recent_repair_logs(limit=20)
+        logs = get_recent_repair_logs(limit=DEFAULT_DISPLAY_LIMIT)
     except Exception:
         summary = {"total_logs": 0, "by_status": [], "by_action": []}
         logs = pd.DataFrame()
@@ -1068,18 +1180,18 @@ with t_repair:
             st.caption("最近修复日志")
             if not logs.empty:
                 dc = [c for c in ["stock_code", "repair_action", "adj_type", "status", "affected_rows", "created_at"] if c in logs.columns]
-                st.dataframe(logs[dc], use_container_width=True, height=280, key="df_repair_logs", selection_mode="single-row", on_select="ignore")
+                show_table(logs, cols=dc, height=280, key="df_repair_logs")
             else:
                 st.markdown("暂无修复日志")
 
     with st.expander("命令行示例"):
         st.code(
             "# 生成修复计划\n"
-            "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action plan --dry-run\n\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --action plan --dry-run\n\n"
             "# dry-run 去重\n"
-            "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action deduplicate --adj all --dry-run\n\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --action deduplicate --adj all --dry-run\n\n"
             "# 真实去重\n"
-            "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action deduplicate --adj all --no-dry-run --confirm\n\n"
+            "python -m src.data_repair.run_data_repair --pool core_500 --action deduplicate --adj all --no-dry-run --confirm\n\n"
             "# dry-run 重拉区间\n"
             "python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj raw --action refetch --start-date 20260701 --end-date 20260703 --dry-run\n\n"
             "# 真实重拉\n"
@@ -1102,7 +1214,7 @@ with t_factors:
 
     try:
         from src.storage.duckdb_repo import fetch_daily_factors, query_df
-        fac = fetch_daily_factors(limit=5)
+        fac = fetch_daily_factors(limit=DEFAULT_DISPLAY_LIMIT)
         total = query_df("SELECT COUNT(*) AS c FROM stock_daily_factors")
         total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
         stocks = query_df("SELECT COUNT(DISTINCT stock_code) AS c FROM stock_daily_factors")
@@ -1117,17 +1229,16 @@ with t_factors:
     k2.metric("覆盖股票数", stock_count)
 
     if not fac.empty:
-        st.caption("最近因子样例")
-        st.dataframe(fac.head(5), use_container_width=True, height=200,
-                     key="df_factors_sample", selection_mode="single-row", on_select="ignore")
+        fac = add_stock_name(fac)
+        show_table(fac, key="df_factors_sample")
     else:
-        st.info("暂无因子数据。请运行 CLI 生成：\n\n"
-                "python -m src.factors.run_factor_calculation --pool core_500 --limit 5")
+        show_empty("暂无因子数据。")
+        render_cmd("python -m src.factors.run_factor_calculation --pool core_500")
 
     with st.expander("命令行示例"):
         st.code(
             "# 小批量因子计算\n"
-            "python -m src.factors.run_factor_calculation --pool core_500 --limit 5\n\n"
+            "python -m src.factors.run_factor_calculation --pool core_500\n\n"
             "# 单只股票因子计算\n"
             "python -m src.factors.run_factor_calculation --stock-code 000001\n\n"
             "# 指定日期范围\n"
@@ -1148,7 +1259,7 @@ with t_ranks:
 
     try:
         from src.storage.duckdb_repo import fetch_factor_rankings, query_df
-        ranks = fetch_factor_rankings(limit=10)
+        ranks = fetch_factor_rankings(limit=DEFAULT_DISPLAY_LIMIT)
         total_r = query_df("SELECT COUNT(*) AS c FROM stock_factor_rank")
         total_rows = int(total_r.iloc[0]["c"]) if not total_r.empty else 0
         stk_r = query_df("SELECT COUNT(DISTINCT stock_code) AS c FROM stock_factor_rank")
@@ -1165,23 +1276,20 @@ with t_ranks:
     k3.metric("覆盖因子数", factor_count)
 
     if not ranks.empty:
-        st.caption("最近排名样例")
-        dc = [c for c in ["stock_code", "trade_date", "factor_name", "raw_value", "rank_value", "percentile_rank"] if c in ranks.columns]
-        st.dataframe(ranks[dc].head(10), use_container_width=True, height=250,
-                     key="df_ranks_sample", selection_mode="single-row", on_select="ignore")
+        show_table(ranks, key="df_ranks_sample")
     else:
-        st.info("暂无排名数据。")
+        show_empty("暂无排名数据。")
 
     with st.expander("命令行示例"):
         st.code(
             "# 小批量计算因子排名\n"
-            "python -m src.factor_rank.run_factor_ranking --pool core_500 --limit 5\n\n"
+            "python -m src.factor_rank.run_factor_ranking --pool core_500\n\n"
             "# 指定因子排名\n"
-            "python -m src.factor_rank.run_factor_ranking --factor-name return_20d --limit 5\n\n"
+            "python -m src.factor_rank.run_factor_ranking --factor-name return_20d\n\n"
             "# 指定交易日排名\n"
             "python -m src.factor_rank.run_factor_ranking --trade-date 20260703\n\n"
             "# 指定日期范围\n"
-            "python -m src.factor_rank.run_factor_ranking --start-date 20260101 --end-date 20260703 --limit 5",
+            "python -m src.factor_rank.run_factor_ranking --start-date 20260101 --end-date 20260703",
             language="bash",
         )
 
@@ -1198,7 +1306,7 @@ with t_analysis:
 
     try:
         from src.storage.duckdb_repo import fetch_analysis_summary, query_df
-        s = fetch_analysis_summary(limit=20)
+        s = fetch_analysis_summary(limit=DEFAULT_DISPLAY_LIMIT)
         total = query_df("SELECT COUNT(*) AS c FROM factor_analysis_summary")
         total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
         facs = query_df("SELECT COUNT(DISTINCT factor_name) AS c FROM factor_analysis_summary")
@@ -1211,19 +1319,16 @@ with t_analysis:
     k2.metric("已分析因子数", factor_count)
 
     if not s.empty:
-        st.caption("分析汇总（按 avg_rank_ic 排序）")
-        dc = [c for c in ["factor_name", "forward_days", "avg_ic", "avg_rank_ic", "ic_ir", "avg_group_spread", "trade_date_count"] if c in s.columns]
-        st.dataframe(s[dc].sort_values("avg_rank_ic", ascending=False).head(20) if "avg_rank_ic" in dc else s[dc].head(20),
-                     use_container_width=True, height=300, key="df_analysis_summary", selection_mode="single-row", on_select="ignore")
+        show_table(s, key="df_analysis_summary")
     else:
-        st.info("暂无分析数据。")
+        show_empty("暂无分析数据。")
 
     with st.expander("命令行示例"):
         st.code(
             "# 小批量因子有效性分析\n"
-            "python -m src.factor_analysis.run_factor_analysis --pool core_500 --limit 5\n\n"
+            "python -m src.factor_analysis.run_factor_analysis --pool core_500\n\n"
             "# 指定因子分析\n"
-            "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --forward-days 5 --limit 5\n\n"
+            "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --forward-days 5\n\n"
             "# 指定日期范围和未来收益周期\n"
             "python -m src.factor_analysis.run_factor_analysis --factor-name return_20d --start-date 20200101 --end-date 20231231 --forward-days 10",
             language="bash",
@@ -1242,7 +1347,7 @@ with t_topk:
     )
     try:
         from src.storage.duckdb_repo import fetch_strategy_selection_result, query_df
-        sel = fetch_strategy_selection_result(limit=20)
+        sel = fetch_strategy_selection_result(limit=DEFAULT_DISPLAY_LIMIT)
         total = query_df("SELECT COUNT(*) AS c FROM strategy_selection_result")
         total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
         strats = query_df("SELECT COUNT(DISTINCT strategy_name) AS c FROM strategy_selection_result")
@@ -1255,20 +1360,18 @@ with t_topk:
     k2.metric("已运行策略数", strat_count)
 
     if not sel.empty:
-        st.caption("最近候选股 TopK")
-        dc = [c for c in ["strategy_name", "trade_date", "stock_code", "rank_in_strategy", "composite_score"] if c in sel.columns]
-        st.dataframe(sel[dc].head(20), use_container_width=True, height=250, key="df_topk_sample", selection_mode="single-row", on_select="ignore")
+        show_table(sel, key="df_topk_sample")
     else:
-        st.info("暂无候选股数据。")
+        show_empty("暂无候选股数据。")
 
     with st.expander("命令行示例"):
         st.code(
             "# 默认单因子策略\n"
-            "python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20 --limit 5\n\n"
+            "python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20\n\n"
             "# 临时单因子\n"
-            "python -m src.strategy.run_topk_strategy --factor-name return_20d --top-k 20 --limit 5\n\n"
+            "python -m src.strategy.run_topk_strategy --factor-name return_20d --top-k 20\n\n"
             "# 临时多因子\n"
-            "python -m src.strategy.run_topk_strategy --factor-weights \"{\\\"return_20d\\\":0.5,\\\"momentum_20d\\\":0.5}\" --top-k 20 --limit 5",
+            "python -m src.strategy.run_topk_strategy --factor-weights \"{\\\"return_20d\\\":0.5,\\\"momentum_20d\\\":0.5}\" --top-k 20",
             language="bash",
         )
 
@@ -1283,35 +1386,41 @@ with t_backtest:
         unsafe_allow_html=True,
     )
     try:
-        from src.storage.duckdb_repo import fetch_backtest_config, fetch_backtest_daily_returns, fetch_backtest_equity_curve
+        from src.storage.duckdb_repo import fetch_backtest_config, fetch_backtest_daily_returns, fetch_backtest_equity_curve, fetch_backtest_positions
         cfgs = fetch_backtest_config()
-        rets = fetch_backtest_daily_returns(limit=10)
-        eqs = fetch_backtest_equity_curve(limit=10)
+        rets = fetch_backtest_daily_returns(limit=DEFAULT_DISPLAY_LIMIT)
+        eqs = fetch_backtest_equity_curve(limit=DEFAULT_DISPLAY_LIMIT)
+        poss = fetch_backtest_positions(limit=DEFAULT_DISPLAY_LIMIT)
     except Exception:
-        cfgs = pd.DataFrame(); rets = pd.DataFrame(); eqs = pd.DataFrame()
+        cfgs = pd.DataFrame(); rets = pd.DataFrame(); eqs = pd.DataFrame(); poss = pd.DataFrame()
 
-    k1, k2, k3 = st.columns(3)
+    k1, k2, k3, k4 = st.columns(4)
     k1.metric("回测配置数", len(cfgs))
     k2.metric("每日收益行", len(rets))
     k3.metric("资金曲线行", len(eqs))
+    k4.metric("持仓行数", len(poss))
 
     if not eqs.empty:
-        st.caption("最近资金曲线")
-        dc = [c for c in ["backtest_name", "trade_date", "equity"] if c in eqs.columns]
-        st.dataframe(eqs[dc].head(10), use_container_width=True, height=200, key="df_bt_eq")
-    elif not cfgs.empty:
-        st.caption("最近回测配置")
-        dc = [c for c in ["backtest_name", "strategy_name", "initial_cash", "top_k", "rebalance_frequency"] if c in cfgs.columns]
-        st.dataframe(cfgs[dc].head(5), use_container_width=True, height=150, key="df_bt_cfg")
-    else:
-        st.info("暂无回测数据。")
+        st.caption("资金曲线")
+        show_table(eqs, key="df_bt_eq")
+    if not rets.empty:
+        st.caption("每日收益")
+        show_table(rets, key="df_bt_rets")
+    if not poss.empty:
+        st.caption("持仓明细")
+        show_table(poss, key="df_bt_pos")
+    if eqs.empty and rets.empty and poss.empty and not cfgs.empty:
+        st.caption("回测配置")
+        show_table(cfgs, key="df_bt_cfg")
+    elif eqs.empty and rets.empty and poss.empty and cfgs.empty:
+        show_empty("暂无回测数据。")
 
     with st.expander("命令行示例"):
         st.code(
             "# 默认基础回测\n"
-            "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --limit 5\n\n"
+            "python -m src.backtest.run_backtest --strategy single_return_20d_top20\n\n"
             "# 自定义参数\n"
-            "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --initial-cash 500000 --top-k 10 --rebalance-frequency weekly --limit 5",
+            "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --initial-cash 500000 --top-k 10 --rebalance-frequency weekly",
             language="bash",
         )
 
@@ -1338,10 +1447,10 @@ with t_backtest_eval:
         dd_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_drawdown_series").iloc[0]["c"])
         monthly_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_monthly_return").iloc[0]["c"])
         yearly_total = int(query_df("SELECT COUNT(*) AS c FROM backtest_yearly_return").iloc[0]["c"])
-        perf = fetch_backtest_performance_summary(limit=10)
-        dd = fetch_backtest_drawdown_series(limit=10)
-        monthly = fetch_backtest_monthly_return(limit=10)
-        yearly = fetch_backtest_yearly_return(limit=10)
+        perf = fetch_backtest_performance_summary(limit=DEFAULT_DISPLAY_LIMIT)
+        dd = fetch_backtest_drawdown_series(limit=DEFAULT_DISPLAY_LIMIT)
+        monthly = fetch_backtest_monthly_return(limit=DEFAULT_DISPLAY_LIMIT)
+        yearly = fetch_backtest_yearly_return(limit=DEFAULT_DISPLAY_LIMIT)
     except Exception:
         perf_total = dd_total = monthly_total = yearly_total = 0
         perf = pd.DataFrame(); dd = pd.DataFrame(); monthly = pd.DataFrame(); yearly = pd.DataFrame()
@@ -1352,31 +1461,31 @@ with t_backtest_eval:
     k3.metric("月度收益行", monthly_total)
     k4.metric("年度收益行", yearly_total)
 
-    st.caption("最近 performance summary")
+    st.caption("最近绩效汇总")
     if not perf.empty:
         cols = [c for c in ["backtest_name", "start_date", "end_date", "total_return", "annualized_return", "max_drawdown", "sharpe_ratio", "calmar_ratio"] if c in perf.columns]
-        st.dataframe(perf[cols], use_container_width=True, height=180, key="df_bt_eval_perf")
+        show_table(perf, cols=cols, height=220, key="df_bt_eval_perf")
     else:
         st.info("暂无绩效汇总数据。")
 
-    st.caption("最近 drawdown series")
+    st.caption("最近回撤序列")
     if not dd.empty:
         cols = [c for c in ["backtest_name", "trade_date", "equity", "running_max_equity", "drawdown"] if c in dd.columns]
-        st.dataframe(dd[cols], use_container_width=True, height=180, key="df_bt_eval_dd")
+        show_table(dd, cols=cols, height=220, key="df_bt_eval_dd")
     else:
         st.info("暂无回撤序列数据。")
 
-    st.caption("最近 monthly return")
+    st.caption("最近月度收益")
     if not monthly.empty:
         cols = [c for c in ["backtest_name", "year_month", "monthly_return", "start_equity", "end_equity", "trading_days"] if c in monthly.columns]
-        st.dataframe(monthly[cols], use_container_width=True, height=180, key="df_bt_eval_monthly")
+        show_table(monthly, cols=cols, height=220, key="df_bt_eval_monthly")
     else:
         st.info("暂无月度收益数据。")
 
-    st.caption("最近 yearly return")
+    st.caption("最近年度收益")
     if not yearly.empty:
         cols = [c for c in ["backtest_name", "year", "yearly_return", "start_equity", "end_equity", "trading_days"] if c in yearly.columns]
-        st.dataframe(yearly[cols], use_container_width=True, height=180, key="df_bt_eval_yearly")
+        show_table(yearly, cols=cols, height=220, key="df_bt_eval_yearly")
     else:
         st.info("暂无年度收益数据。")
 
@@ -1401,8 +1510,8 @@ with t_scoring:
     )
     try:
         from src.storage.duckdb_repo import fetch_stock_composite_score, fetch_stock_score_detail, query_df
-        comp = fetch_stock_composite_score(limit=20)
-        det = fetch_stock_score_detail(limit=20)
+        comp = fetch_stock_composite_score(limit=DEFAULT_DISPLAY_LIMIT)
+        det = fetch_stock_score_detail(limit=DEFAULT_DISPLAY_LIMIT)
         total = query_df("SELECT COUNT(*) AS c FROM stock_composite_score")
         total_rows = int(total.iloc[0]["c"]) if not total.empty else 0
         models = query_df("SELECT COUNT(DISTINCT model_name) AS c FROM stock_composite_score")
@@ -1416,18 +1525,16 @@ with t_scoring:
     k3.metric("评分明细行", len(det))
 
     if not comp.empty:
-        st.caption("最近综合评分 TopK")
-        dc = [c for c in ["model_name","trade_date","stock_code","composite_score","score_rank","factor_coverage_ratio"] if c in comp.columns]
-        st.dataframe(comp[dc].head(20), use_container_width=True, height=250, key="df_scoring_sample", selection_mode="single-row", on_select="ignore")
+        show_table(comp, key="df_scoring_sample")
     else:
-        st.info("暂无评分数据。")
+        show_empty("暂无评分数据。")
 
     with st.expander("命令行示例"):
         st.code(
             "# 动量质量评分模型\n"
-            "python -m src.scoring.run_scoring --model momentum_quality_score --limit 5\n\n"
+            "python -m src.scoring.run_scoring --model momentum_quality_score\n\n"
             "# 趋势量能评分模型\n"
-            "python -m src.scoring.run_scoring --model trend_volume_score --limit 5\n\n"
+            "python -m src.scoring.run_scoring --model trend_volume_score\n\n"
             "# 低波稳定评分模型\n"
             "python -m src.scoring.run_scoring --model low_vol_stable_score --trade-date 20260703",
             language="bash",
@@ -1440,16 +1547,16 @@ with t_scoring:
 with t_commands:
     st.markdown("<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>常用命令行参考 -- 所有命令默认 dry-run 安全</div>", unsafe_allow_html=True)
     commands = [
-        ("数据更新", "python -m src.data_update.historical_loader --pool core_500 --adj qfq --limit 5"),
-        ("数据质量", "python -m src.data_quality.quality_report --adj qfq --limit 5"),
-        ("数据修复", "python -m src.data_repair.run_data_repair --pool core_500 --limit 5 --action plan --dry-run"),
-        ("因子计算", "python -m src.factors.run_factor_calculation --pool core_500 --limit 5"),
-        ("因子排名", "python -m src.factor_rank.run_factor_ranking --pool core_500 --limit 5"),
-        ("因子分析", "python -m src.factor_analysis.run_factor_analysis --pool core_500 --limit 5"),
-        ("TopK 选股", "python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20 --limit 5"),
-        ("基础回测", "python -m src.backtest.run_backtest --strategy single_return_20d_top20 --limit 5"),
+        ("数据更新", "python -m src.data_update.historical_loader --pool core_500 --adj qfq"),
+        ("数据质量", "python -m src.data_quality.quality_report --adj qfq"),
+        ("数据修复", "python -m src.data_repair.run_data_repair --pool core_500 --action plan --dry-run"),
+        ("因子计算", "python -m src.factors.run_factor_calculation --pool core_500"),
+        ("因子排名", "python -m src.factor_rank.run_factor_ranking --pool core_500"),
+        ("因子分析", "python -m src.factor_analysis.run_factor_analysis --pool core_500"),
+        ("TopK 选股", "python -m src.strategy.run_topk_strategy --strategy single_return_20d_top20"),
+        ("基础回测", "python -m src.backtest.run_backtest --strategy single_return_20d_top20"),
         ("回测评价", "python -m src.backtest_evaluation.run_backtest_evaluation --backtest-name single_return_20d_top20_bt"),
-        ("多因子评分", "python -m src.scoring.run_scoring --model momentum_quality_score --limit 5"),
+        ("多因子评分", "python -m src.scoring.run_scoring --model momentum_quality_score"),
     ]
     for name, cmd in commands:
         with st.expander(name):
@@ -1473,3 +1580,69 @@ with t_disclaimer:
 <li>本项目不会自动下单</li>
 </ul>
 </div>""", unsafe_allow_html=True)
+
+
+# ======================================================================
+#  TAB: 数据源 (V1.4.1)
+# ======================================================================
+
+with t_providers:
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>"
+        "V1.4.1 数据源健康度 -- 只读展示，不执行外部数据拉取</div>",
+        unsafe_allow_html=True,
+    )
+    try:
+        from ui.components.provider_health_view import (
+            get_meta_db_status, load_provider_health, load_provider_config,
+            load_provider_stats, load_recent_errors, STATUS_CN,
+        )
+        meta = get_meta_db_status()
+        health = load_provider_health()
+        config = load_provider_config()
+        stats = load_provider_stats()
+        errors = load_recent_errors(10)
+    except Exception:
+        meta = {}; health = pd.DataFrame(); config = pd.DataFrame()
+        stats = pd.DataFrame(); errors = pd.DataFrame()
+
+    # Meta DB status
+    k1, k2 = st.columns(2)
+    k1.metric("元数据库", meta.get("db_type", "N/A"), meta.get("status", ""))
+    k2.metric("连接状态", "已连接" if meta.get("connected") else "未连接")
+
+    # Provider health table
+    st.markdown("<br>", unsafe_allow_html=True)
+    if not health.empty:
+        health_display = health.copy()
+        health_display["health_status"] = health_display["health_status"].map(STATUS_CN).fillna(health_display["health_status"])
+        st.caption("Provider 健康状态")
+        st.dataframe(health_display, use_container_width=True, height=180,
+                     key="df_prov_health", selection_mode="single-row", on_select="ignore")
+    else:
+        st.info("暂无 Provider 健康数据。")
+
+    # Call stats
+    if not stats.empty:
+        st.caption("Provider 调用统计")
+        st.dataframe(stats, use_container_width=True, height=150,
+                     key="df_prov_stats", selection_mode="single-row", on_select="ignore")
+
+    # Recent errors
+    if not errors.empty:
+        st.caption("最近错误")
+        st.dataframe(errors, use_container_width=True, height=200,
+                     key="df_prov_errors", selection_mode="single-row", on_select="ignore")
+
+    # Tips
+    with st.expander("操作提示"):
+        tips = []
+        hd = health.set_index("provider_name")["health_status"].to_dict() if not health.empty else {}
+        if hd.get("miniqmt") == "disabled": tips.append("MiniQMT 未安装或未启动，当前会自动跳过")
+        if hd.get("tushare") == "disabled": tips.append("未配置 TUSHARE_TOKEN，当前会自动跳过")
+        if hd.get("akshare") == "down": tips.append("AkShare 当前不可用，不影响本地缓存读取")
+        if hd.get("local_cache") == "healthy": tips.append("本地缓存可用，优先使用本地数据")
+        if tips:
+            for t in tips: st.markdown(f"* {t}")
+        else:
+            st.markdown("* 所有 Provider 状态正常")

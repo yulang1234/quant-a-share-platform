@@ -29,6 +29,11 @@ data/duckdb/*.wal
 data/duckdb/*.wal.corrupt
 data/duckdb/backup-*/
 
+# Metadata database fallback
+data/meta/*.db
+data/meta/*.sqlite
+data/meta/*.sqlite3
+
 # Parquet data
 data/parquet/ods/*
 data/parquet/dwd/daily_raw/*

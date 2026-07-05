@@ -46,6 +46,21 @@ def get_stock_pool_path() -> Path:
     return _ensure_absolute(rel)
 
 
+def get_meta_db_url() -> str:
+    """Return the meta-database connection URL.
+
+    Priority:
+    1. ``DATABASE_URL`` env var (PostgreSQL or any SQLAlchemy-compatible).
+    2. Local SQLite fallback: ``data/meta/quant_meta.db``.
+    """
+    db_url = os.getenv("DATABASE_URL", "")
+    if db_url:
+        return db_url
+    meta_dir = _PROJECT_ROOT / "data" / "meta"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{meta_dir / 'quant_meta.db'}"
+
+
 # ── Helpers ─────────────────────────────────────────────────────────────
 def _ensure_absolute(rel_or_abs: str) -> Path:
     p = Path(rel_or_abs)

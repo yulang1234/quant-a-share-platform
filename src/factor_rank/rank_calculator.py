@@ -31,6 +31,8 @@ def get_factor_source_data(
     limit: int | None = None,
 ) -> pd.DataFrame:
     """Read factor data from stock_daily_factors."""
+    if limit is not None and limit <= 0:
+        return pd.DataFrame()
     return fetch_daily_factors(
         stock_code=None, start_date=start_date or trade_date,
         end_date=end_date or trade_date, limit=limit,

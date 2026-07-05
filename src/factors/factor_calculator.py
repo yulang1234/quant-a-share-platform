@@ -66,11 +66,14 @@ def get_factor_source_data(
     pd.DataFrame
         Sorted by stock_code, trade_date.  Stock codes are 6-digit strings.
     """
+    if limit is not None and limit <= 0:
+        return pd.DataFrame()
+
     if stock_codes is None:
         pool = get_active_stock_pool()
         stock_codes = pool["stock_code"].astype(str).str.zfill(6).tolist()
 
-    if limit and len(stock_codes) > limit:
+    if limit is not None and len(stock_codes) > limit:
         stock_codes = stock_codes[:limit]
 
     conditions: list[str] = []
