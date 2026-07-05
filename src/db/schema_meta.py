@@ -204,8 +204,62 @@ class DataLoadTaskLog(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+# ── 10. data_coverage_report (V1.4.3) ──────────────────────────────────────
+
+class DataCoverageReport(Base):
+    __tablename__ = "data_coverage_report"
+
+    report_id = Column(Integer, primary_key=True, autoincrement=True)
+    universe_id = Column(Integer)
+    security_id = Column(Integer)
+    symbol = Column(String(12))
+    exchange = Column(String(8))
+    asset_type = Column(String(24), default="stock")
+    data_type = Column(String(16), default="daily_bar")
+    adj_type = Column(String(8))
+    start_date = Column(String(16))
+    end_date = Column(String(16))
+    expected_trade_days = Column(Integer, default=0)
+    actual_trade_days = Column(Integer, default=0)
+    missing_trade_days = Column(Integer, default=0)
+    coverage_rate = Column(Float)
+    first_data_date = Column(String(16))
+    last_data_date = Column(String(16))
+    status = Column(String(24), default="unknown")
+    source = Column(String(32), default="coverage_scanner")
+    calendar_version = Column(String(16))
+    generated_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# ── 11. data_gap_detail (V1.4.3) ───────────────────────────────────────────
+
+class DataGapDetail(Base):
+    __tablename__ = "data_gap_detail"
+
+    gap_id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer)
+    universe_id = Column(Integer)
+    security_id = Column(Integer)
+    symbol = Column(String(12))
+    exchange = Column(String(8))
+    data_type = Column(String(16), default="daily_bar")
+    adj_type = Column(String(8))
+    gap_start_date = Column(String(16))
+    gap_end_date = Column(String(16))
+    missing_days = Column(Integer, default=0)
+    gap_type = Column(String(24))
+    severity = Column(String(16), default="low")
+    repair_status = Column(String(16), default="pending")
+    related_task_id = Column(Integer)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 ALL_TABLES = [
     SecurityMaster, UniverseConfig, UniverseMember,
     DataProviderConfig, DataProviderHealth, DataProviderCallLog,
     TradingCalendar, DataLoadTask, DataLoadTaskLog,
+    DataCoverageReport, DataGapDetail,
 ]

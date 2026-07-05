@@ -178,11 +178,11 @@ class TestVersionText:
 
     def test_mentions_v14(self) -> None:
         src = self._src()
-        assert "V1.4.2" in src
+        assert "V1.4.3" in src
 
     def test_v14_scope_lines_present(self) -> None:
         src = self._src()
-        assert "[INFO] V1.4.2 scope: security master, trading calendar, data load task queue." in src
+        assert "[INFO] V1.4.3 scope: coverage reports, gap detection, sample backfill validation." in src
 
     def test_main_print_strings_are_ascii(self) -> None:
         """Every constant passed to print() in main.py is ASCII-safe."""

@@ -2,7 +2,28 @@
 
 ## 当前进度
 
-- V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础：完成
+- V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证：完成
+
+## V1.4.3 完成范围
+
+- `data_coverage_report`、`data_gap_detail`。
+- `coverage_scanner`、`coverage_report`、`gap_report`。
+- `build_repair_tasks`。
+- `sample_backfill_validate`。
+- 覆盖率基于 `trading_calendar.is_open=true`。
+- 缺口识别基于交易日序列，不按自然日判断。
+- 缺口可以转换为 `data_load_task`。
+- 所有新增 CLI 默认 dry-run，`--confirm` 才写元数据库。
+- `--save-local` 必须配合 `--confirm`。
+
+## V1.4.3 边界
+
+- 不是全市场历史数据补齐完成。
+- 当前 coverage_scanner 只扫描本地数据。
+- 当前 build_repair_tasks 只生成任务，不执行任务。
+- 当前 sample_backfill_validate 是小样本验证工具，不是全量补数工具。
+- 当前 trading_calendar 仍可能是 weekday 基础日历，不代表完整真实 A 股节假日日历。
+- PostgreSQL / SQLite 元数据库不存行情明细。
 
 ## V1.4.2 完成范围
 
@@ -43,14 +64,15 @@
 - 不做全市场分钟线或 tick 数据。
 - PostgreSQL / SQLite 只存元数据，不存大规模行情明细。
 
-## 下一步：V1.4.3
+## 下一步：V1.4.4
 
-- 真实 Provider 驱动的 security_master 同步。
+- 小样本真实回填验证加强。
+- raw / qfq 本地保存链路稳定化。
+- 覆盖率 before / after 对比。
+- 修复任务执行结果自动回写 gap 状态。
+- core_50 / core_500 分批补数准备。
 - 真实交易日历 API 接入。
-- 历史数据覆盖率报告。
-- 缺口识别与缺口修复任务生成。
-- 小样本真实历史数据补齐。
-- 旧 historical_loader 渐进接入 `MarketDataService`。
+- 真实 Provider 驱动 security_master 同步。
 
 ## 已完成
 
@@ -71,10 +93,11 @@
 - V1.4 Streamlit 可视化平台升级：完成
 - V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库：完成
 - V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础：完成
+- V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证：完成
 
 ## 下一步
 
-- V1.4.3 Provider 驱动主数据、真实交易日历、覆盖率报告与缺口修复：下一步
+- V1.4.4 小样本真实回填验证加强、本地保存链路稳定化、覆盖率 before/after：下一步
 
 ## 规划中
 

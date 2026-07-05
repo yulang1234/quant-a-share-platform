@@ -16,7 +16,7 @@ from config.logging_config import setup_logging
 from config.settings import APP_ENV, ensure_dirs, get_duckdb_path, get_parquet_root, get_stock_pool_path
 from src.storage.duckdb_repo import close_connection, init_database, query_df
 
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 __app_name__ = "Quant A-Share Platform"
 
 # ── DuckDB lock / startup-error signals ───────────────────────────────
@@ -118,7 +118,7 @@ def main() -> int:
     print()
     print("=" * 60)
     print(f"  {__app_name__}")
-    print(f"  Version: v{__version__} (V1.4.2 Security Master, Trading Calendar, Task Queue)")
+    print(f"  Version: v{__version__} (V1.4.3 Coverage, Gap Detection, Sample Backfill)")
     print("=" * 60)
     print()
     print(f"  DuckDB path:      {db_path}")
@@ -148,8 +148,8 @@ def main() -> int:
         )
         print()
 
-    print("  [INFO] V1.4.2 scope: security master, trading calendar, data load task queue.")
-    print("  [INFO] Next step: V1.4.3 provider-driven master data and real trading calendar.")
+    print("  [INFO] V1.4.3 scope: coverage reports, gap detection, sample backfill validation.")
+    print("  [INFO] Next step: V1.4.4 small-sample real backfill hardening.")
     print()
 
     close_connection()

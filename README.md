@@ -1,6 +1,65 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础
+## 当前版本：V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证
+
+V1.4.3 完成覆盖率报告、缺口识别、缺口转修复任务，以及小样本补数验证的基础能力。本版本不是全市场历史数据补齐完成版；默认只扫描本地数据，所有新增 CLI 默认 dry-run，`--confirm` 才写元数据库，`--save-local` 必须配合 `--confirm`。
+
+### V1.4.3 已完成
+
+- 新增 `data_coverage_report` 表。
+- 新增 `data_gap_detail` 表。
+- 新增 `coverage_scanner`。
+- 新增 `coverage_report`。
+- 新增 `gap_report`。
+- 新增 `build_repair_tasks`。
+- 新增 `sample_backfill_validate`。
+- 覆盖率基于 `trading_calendar.is_open=true`。
+- 缺口识别基于交易日序列，不按自然日判断。
+- 缺口可以转换为 `data_load_task`。
+- 小样本可以验证 `task_runner + MarketDataService` 链路。
+- 所有 CLI 默认 dry-run。
+- `--confirm` 才真实写入元数据库。
+- `--save-local` 必须配合 `--confirm`。
+
+### V1.4.3 当前限制
+
+- 本版本不是全市场历史数据补齐完成。
+- 当前还没有真正执行全市场补数。
+- 当前 `security_master` 如果来源是 `stock_pool`，就不是完整全市场。
+- 当前 `trading_calendar` 如果是 weekday 生成，就不是完整真实 A 股节假日日历。
+- 当前 `coverage_scanner` 只扫描本地 DuckDB / LocalCache 数据。
+- 当前 `build_repair_tasks` 只生成任务，不执行任务。
+- 当前 `sample_backfill_validate` 是小样本验证工具，不是全量补数工具。
+- 当前没有迁移 `historical_loader.py`。
+- 当前没有接 Qlib、Alpha158、Alpha360。
+- 当前没有训练模型、自动交易、`xttrader`、ClickHouse、全市场分钟线或 tick 数据。
+- PostgreSQL / SQLite 元数据库只存元数据、覆盖率摘要、缺口和任务状态，不存行情明细。
+
+### V1.4.3 安全 CLI 示例
+
+```bash
+python -m src.data_quality.coverage_scanner --limit 5 --dry-run
+python -m src.data_quality.coverage_report --adj qfq --top-missing --limit 20
+python -m src.data_quality.gap_report --adj qfq --limit 20
+python -m src.data_quality.build_repair_tasks --limit 5 --dry-run
+python -m src.data_quality.sample_backfill_validate --limit 3 --dry-run
+python -m src.data_quality.sample_backfill_validate --limit 3 --confirm --no-save
+python -m src.data_quality.sample_backfill_validate --limit 3 --confirm --save-local
+```
+
+`sample_backfill_validate --save-local` 是实验性小样本能力，只允许显式 `--confirm` 后使用；不写 PostgreSQL 行情明细。
+
+### 下一版本 V1.4.4 建议
+
+- 小样本真实回填验证加强。
+- raw / qfq 本地保存链路稳定化。
+- 覆盖率 before / after 对比。
+- 修复任务执行结果自动回写 gap 状态。
+- core_50 / core_500 分批补数准备。
+- 真实交易日历 API 接入。
+- 真实 Provider 驱动 security_master 同步。
+
+## V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础
 
 V1.4.2 完成证券主数据、交易日历和历史数据加载任务队列的基础能力。本版本仍以安全收口为主：所有新增 CLI 默认 dry-run，只有显式 `--confirm` 才写元数据库；`task_runner` 默认 `--no-save`，不会把行情明细写入 PostgreSQL。
 
@@ -791,7 +850,8 @@ quant-a-share-platform/
 - V1.4 Streamlit 可视化平台升级 [完成]
 - V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库 [完成]
 - V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础 [完成]
-- V1.4.3 Provider 驱动主数据、真实交易日历、覆盖率报告与缺口修复 [下一步]
+- V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证 [完成]
+- V1.4.4 小样本真实回填验证加强、本地保存链路稳定化、覆盖率 before/after [下一步]
 - V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 
