@@ -141,7 +141,71 @@ class DataProviderCallLog(Base):
 
 # ── All tables list ───────────────────────────────────────────────────────
 
+# ── 7. trading_calendar (V1.4.2) ───────────────────────────────────────────
+
+class TradingCalendar(Base):
+    __tablename__ = "trading_calendar"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_date = Column(DateTime, nullable=False)
+    exchange = Column(String(8), default="CN")
+    is_open = Column(Boolean, default=True)
+    is_weekend = Column(Boolean, default=False)
+    is_holiday = Column(Boolean, default=False)
+    pre_trade_date = Column(DateTime)
+    next_trade_date = Column(DateTime)
+    source = Column(String(32), default="manual")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=datetime.now)
+
+
+# ── 8. data_load_task (V1.4.2) ─────────────────────────────────────────────
+
+class DataLoadTask(Base):
+    __tablename__ = "data_load_task"
+
+    task_id = Column(Integer, primary_key=True, autoincrement=True)
+    universe_id = Column(Integer)
+    security_id = Column(Integer)
+    symbol = Column(String(12))
+    exchange = Column(String(8))
+    asset_type = Column(String(24), default="stock")
+    data_type = Column(String(16), default="daily_bar")
+    adj_type = Column(String(8))
+    start_date = Column(String(16))
+    end_date = Column(String(16))
+    provider_preference = Column(String(64))
+    status = Column(String(16), default="pending")
+    attempt_count = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=5)
+    row_count = Column(Integer, default=0)
+    error_type = Column(String(64))
+    error_message = Column(Text)
+    next_retry_at = Column(DateTime)
+    last_attempt_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# ── 9. data_load_task_log (V1.4.2) ─────────────────────────────────────────
+
+class DataLoadTaskLog(Base):
+    __tablename__ = "data_load_task_log"
+
+    log_id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, nullable=False)
+    status_before = Column(String(16))
+    status_after = Column(String(16))
+    provider_used = Column(String(32))
+    row_count = Column(Integer, default=0)
+    duration_ms = Column(Integer)
+    error_type = Column(String(64))
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 ALL_TABLES = [
     SecurityMaster, UniverseConfig, UniverseMember,
     DataProviderConfig, DataProviderHealth, DataProviderCallLog,
+    TradingCalendar, DataLoadTask, DataLoadTaskLog,
 ]

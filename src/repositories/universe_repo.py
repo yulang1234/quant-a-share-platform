@@ -25,6 +25,17 @@ class UniverseRepository:
         return self._session.query(UniverseConfig).all()
 
     def add_member(self, universe_id: int, symbol: str, exchange: str, **kwargs) -> UniverseMember:
+        existing = self._session.query(UniverseMember).filter_by(
+            universe_id=universe_id,
+            symbol=str(symbol).zfill(6),
+            exchange=exchange.upper(),
+        ).first()
+        if existing:
+            for k, v in kwargs.items():
+                if hasattr(existing, k) and v is not None:
+                    setattr(existing, k, v)
+            self._session.commit()
+            return existing
         m = UniverseMember(
             universe_id=universe_id, symbol=str(symbol).zfill(6),
             exchange=exchange.upper(), **kwargs,

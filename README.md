@@ -1,6 +1,56 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库
+## 当前版本：V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础
+
+V1.4.2 完成证券主数据、交易日历和历史数据加载任务队列的基础能力。本版本仍以安全收口为主：所有新增 CLI 默认 dry-run，只有显式 `--confirm` 才写元数据库；`task_runner` 默认 `--no-save`，不会把行情明细写入 PostgreSQL。
+
+### V1.4.2 已完成
+
+- 新增 `trading_calendar` 表。
+- 新增 `data_load_task` 表。
+- 新增 `data_load_task_log` 表。
+- 新增 security_master 同步服务和 CLI。
+- 新增 `universe_all_a` 构建服务和 CLI。
+- 新增 trading calendar service 和同步 CLI。
+- 新增 data load task repository / log repository。
+- 新增 `retry_policy`。
+- 新增 `task_builder`，支持 raw / qfq / all，支持按年分片。
+- 新增 `task_runner`，默认 dry-run，默认 `--no-save`。
+- 新增 `task_stats`。
+
+### V1.4.2 当前限制
+
+- 当前 `security_master` sync 主要基于本地 `stock_pool`，不是完整 Provider 驱动的全市场证券主数据同步。
+- 当前 `universe_all_a` 如果基于本地 `stock_pool` 或当前 `security_master`，范围就是本地已有股票范围，不代表完整全 A。
+- 当前 `trading_calendar` 默认 weekday 生成，不包含完整中国节假日和临时休市。
+- 当前还没有真实交易日历 API；后续覆盖率报告必须基于真实交易日历，不能基于简单自然日或 weekday。
+- 当前还没有真实全市场历史数据补齐。
+- 当前没有迁移 `historical_loader.py` 到 `MarketDataService`。
+- 当前没有接 Qlib / Alpha158 / Alpha360。
+- 当前没有训练模型、自动交易、`xttrader`、ClickHouse、全市场分钟线或 tick 数据。
+- PostgreSQL / SQLite 元数据库不存行情明细。
+
+### V1.4.2 安全 CLI 示例
+
+```bash
+python -m src.security.sync_security_master --limit 5 --dry-run
+python -m src.universe.universe_builder --limit 5 --dry-run
+python -m src.trading_calendar.sync_trading_calendar --start-date 20260101 --end-date 20260131 --exchange CN --dry-run
+python -m src.data_tasks.task_builder --limit 10 --dry-run
+python -m src.data_tasks.task_runner --limit 5 --dry-run
+python -m src.data_tasks.task_runner --limit 5 --confirm --no-save
+python -m src.data_tasks.task_stats
+```
+
+### 下一版本 V1.4.3 建议
+
+- 真实 Provider 驱动的 `security_master` 同步。
+- 真实交易日历 API 接入。
+- 历史数据覆盖率报告。
+- 缺口识别。
+- 缺口修复任务生成。
+- 小样本真实历史数据补齐。
+- 旧 `historical_loader.py` 渐进接入 `MarketDataService`。
 
 V1.4.1 完成了元数据库、多数据源 Provider 架构、Provider fallback、调用日志、健康状态、CLI 检查工具，以及 Streamlit “数据源”健康度只读页面。
 
@@ -740,7 +790,8 @@ quant-a-share-platform/
 - V1.3 多因子评分系统 [完成]
 - V1.4 Streamlit 可视化平台升级 [完成]
 - V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库 [完成]
-- V1.4.2 历史数据补齐、任务队列、覆盖率报告、缺口修复 [下一步]
+- V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础 [完成]
+- V1.4.3 Provider 驱动主数据、真实交易日历、覆盖率报告与缺口修复 [下一步]
 - V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 

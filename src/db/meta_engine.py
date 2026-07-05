@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from config.settings import get_meta_db_url, get_project_root
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def get_meta_engine() -> Engine:
     """
     global _engine
     if _engine is None:
-        url = get_meta_db_url()
+        url = settings.get_meta_db_url()
         logger.info("Meta DB engine: %s", _split_url_for_log(url))
         _engine = create_engine(url, echo=False)
     return _engine
