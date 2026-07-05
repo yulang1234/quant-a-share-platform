@@ -54,6 +54,21 @@ def run_tasks(
             )
             elapsed = int((time.time() - t0) * 1000)
             if df is not None and not df.empty:
+                if save_local and confirm:
+                    try:
+                        from src.storage.duckdb_repo import upsert_daily_data
+                        table = "stock_daily_qfq" if task.adj_type == "qfq" else "stock_daily_raw"
+                        upsert_daily_data(table, df)
+                        try:
+                            from src.storage.parquet_repo import save_daily_parquet
+                            save_daily_parquet(df, task.symbol, task.adj_type or "raw")
+                        except Exception: pass
+                    except Exception as e:
+                        task_repo.update_status(task.task_id, "failed",
+                                                attempt_count=task.attempt_count + 1,
+                                                error_type="SaveError", error_message=str(e)[:500],
+                                                last_attempt_at=datetime.now())
+                        result["failed"] += 1; continue
                 task_repo.update_status(task.task_id, "success", row_count=len(df),
                                         attempt_count=task.attempt_count + 1,
                                         last_attempt_at=datetime.now())
