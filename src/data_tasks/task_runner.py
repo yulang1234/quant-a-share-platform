@@ -7,6 +7,28 @@ import time
 from datetime import datetime
 
 
+def _validate_market_data_for_save(df, adj_type: str) -> None:
+    if adj_type not in ("raw", "qfq"):
+        raise ValueError(f"adj_type must be raw or qfq, got {adj_type!r}")
+    if df is None or df.empty:
+        raise ValueError("empty DataFrame cannot be saved")
+    missing = sorted({"trade_date", "close"} - set(df.columns))
+    if missing:
+        raise ValueError(f"market data missing required columns: {', '.join(missing)}")
+
+
+def _prepare_market_data_for_save(df, stock_code: str, adj_type: str):
+    _validate_market_data_for_save(df, adj_type)
+    data = df.copy()
+    code = str(stock_code).split(".")[0].zfill(6)
+    if "stock_code" not in data.columns:
+        if "symbol" in data.columns:
+            data["stock_code"] = data["symbol"].astype(str).str.split(".").str[0].str.zfill(6)
+        else:
+            data["stock_code"] = code
+    return data
+
+
 def run_tasks(
     limit: int = 5,
     status_filter: str = "pending",
@@ -17,6 +39,9 @@ def run_tasks(
     sleep_seconds: float = 1.0,
     provider_name: str | None = None,
 ) -> dict[str, int]:
+    if save_local and not confirm:
+        raise ValueError("save_local requires confirm=True")
+
     from src.data_tasks.task_repo import DataLoadTaskRepository, DataLoadTaskLogRepository
     from src.data_tasks.retry_policy import calculate_next_retry
 
@@ -43,6 +68,12 @@ def run_tasks(
         status_before = task.status
         t0 = time.time()
         try:
+            task_repo.update_status(
+                task.task_id,
+                "running",
+                attempt_count=task.attempt_count,
+                last_attempt_at=datetime.now(),
+            )
             if svc is None:
                 from src.data_sources.market_data_service import MarketDataService
                 svc = MarketDataService()
@@ -56,12 +87,13 @@ def run_tasks(
             if df is not None and not df.empty:
                 if save_local and confirm:
                     try:
+                        save_df = _prepare_market_data_for_save(df, task.symbol, task.adj_type or "raw")
                         from src.storage.duckdb_repo import upsert_daily_data
                         table = "stock_daily_qfq" if task.adj_type == "qfq" else "stock_daily_raw"
-                        upsert_daily_data(table, df)
+                        upsert_daily_data(table, save_df)
                         try:
                             from src.storage.parquet_repo import save_daily_parquet
-                            save_daily_parquet(df, task.symbol, task.adj_type or "raw")
+                            save_daily_parquet(save_df, task.symbol, task.adj_type or "raw")
                         except Exception: pass
                     except Exception as e:
                         task_repo.update_status(task.task_id, "failed",
@@ -109,6 +141,10 @@ def main() -> int:
     p.add_argument("--confirm", action="store_true", default=False)
     p.add_argument("--sleep", type=float, default=1.0)
     args = p.parse_args()
+
+    if args.save_local and not args.confirm:
+        print("[ERROR] --save-local requires --confirm")
+        return 1
 
     if not args.confirm:
         print("[DRY-RUN MODE] Use --confirm to execute real tasks.\n")

@@ -33,3 +33,17 @@ class TestCoverageCompare:
         result = compare_coverage(["000001"], "qfq", "20200101", "20201231")
         assert "avg_rate" in result["before"]
         assert "total_missing" in result["before"]
+
+    def test_improved_true_with_after_reports(self) -> None:
+        from src.data_quality.coverage_repo import CoverageReportRepository
+        repo = CoverageReportRepository()
+        after = [
+            repo.upsert(symbol="000002", exchange="SZ", adj_type="qfq",
+                        start_date="20200101", end_date="20201231",
+                        expected_trade_days=250, actual_trade_days=240,
+                        missing_trade_days=10, coverage_rate=0.96,
+                        status="partial")
+        ]
+        result = compare_coverage(["000001"], "qfq", "20200101", "20201231", after_reports=after)
+        assert result["after"]["avg_rate"] == 0.96
+        assert result["improved"] is True

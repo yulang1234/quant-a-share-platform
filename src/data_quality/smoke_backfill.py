@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--end-date", required=True)
     p.add_argument("--adj", default="qfq", choices=["raw", "qfq"])
     p.add_argument("--provider", default=None)
+    p.add_argument("--dry-run", action="store_true", default=True)
     p.add_argument("--confirm", action="store_true", default=False)
     p.add_argument("--no-save", action="store_true", default=True)
     p.add_argument("--save-local", action="store_true", default=False)
@@ -53,14 +54,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.save_local:
+            from src.data_tasks.task_runner import _prepare_market_data_for_save
+            save_df = _prepare_market_data_for_save(df, args.stock_code, args.adj)
             from src.storage.duckdb_repo import upsert_daily_data
             table = "stock_daily_qfq" if args.adj == "qfq" else "stock_daily_raw"
-            upsert_daily_data(table, df)
+            upsert_daily_data(table, save_df)
             try:
                 from src.storage.parquet_repo import save_daily_parquet
                 from src.data_sources.field_mapper import normalise_symbol_exchange
                 sym, _ = normalise_symbol_exchange(args.stock_code)
-                save_daily_parquet(df, sym, args.adj)
+                save_daily_parquet(save_df, sym, args.adj)
             except Exception: pass
             print("[SAVED] Data written to DuckDB + Parquet.")
         else:

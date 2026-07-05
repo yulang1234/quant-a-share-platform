@@ -2,7 +2,29 @@
 
 ## 当前进度
 
-- V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证：完成
+- V1.4.4 小样本真实回填验证与本地保存链路稳定化：完成
+
+## V1.4.4 完成范围
+
+- `task_runner` 支持 `save-local`。
+- `confirm + no-save` 只验证 Provider 和任务状态。
+- `confirm + save-local` 可保存本地行情。
+- 本地保存链路复用 DuckDB / Parquet。
+- `repair_status_updater` 支持任务成功后更新 gap 状态。
+- `coverage_compare` 支持 before / after 覆盖率对比。
+- `smoke_backfill` 支持单股小区间验证。
+- 默认 dry-run，`--confirm` 才真实执行。
+- `--save-local` 必须配合 `--confirm`。
+
+## V1.4.4 边界
+
+- 不是全市场补数。
+- 不是 core_50 / core_500 补数。
+- smoke_backfill 只适合单股小区间验证。
+- save-local 当前只适合小样本验证。
+- PostgreSQL / SQLite 元数据库不存行情明细。
+- 当前未迁移 historical_loader。
+- 当前未接 Qlib、Alpha158、Alpha360、xttrader、ClickHouse。
 
 ## V1.4.3 完成范围
 
@@ -64,15 +86,17 @@
 - 不做全市场分钟线或 tick 数据。
 - PostgreSQL / SQLite 只存元数据，不存大规模行情明细。
 
-## 下一步：V1.4.4
+## 下一步：V1.4.5
 
-- 小样本真实回填验证加强。
-- raw / qfq 本地保存链路稳定化。
-- 覆盖率 before / after 对比。
-- 修复任务执行结果自动回写 gap 状态。
-- core_50 / core_500 分批补数准备。
-- 真实交易日历 API 接入。
-- 真实 Provider 驱动 security_master 同步。
+- core_50 / core_100 小批量补数。
+- 按 limit 分批执行。
+- 按 raw / qfq 分批。
+- 按年份区间分批。
+- 加强失败任务重试。
+- 批次覆盖率报告。
+- 批次任务统计。
+- Provider 稳定性统计。
+- 继续禁止全市场无控制补数。
 
 ## 已完成
 
@@ -94,10 +118,11 @@
 - V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库：完成
 - V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础：完成
 - V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证：完成
+- V1.4.4 小样本真实回填验证与本地保存链路稳定化：完成
 
 ## 下一步
 
-- V1.4.4 小样本真实回填验证加强、本地保存链路稳定化、覆盖率 before/after：下一步
+- V1.4.5 core_50/core_100 小批量补数与批次统计：下一步
 
 ## 规划中
 

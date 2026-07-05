@@ -1,6 +1,56 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证
+## 当前版本：V1.4.4 小样本真实回填验证与本地保存链路稳定化
+
+V1.4.4 强化小样本真实回填验证和本地保存链路。`task_runner` 支持 `save-local`，`smoke_backfill` 支持单股小区间验证，`repair_status_updater` 支持任务成功后更新 gap 状态，`coverage_compare` 支持 before / after 覆盖率对比。本版本不是 core_50 / core_500 / 全市场补数版本。
+
+### V1.4.4 已完成
+
+- `task_runner` 支持 `save-local`。
+- `confirm + no-save` 只验证 Provider 和任务状态，不保存行情。
+- `confirm + save-local` 可保存本地行情。
+- 保存链路复用现有 DuckDB / Parquet。
+- `repair_status_updater` 可更新 gap 状态。
+- `coverage_compare` 可做 before / after 对比。
+- `smoke_backfill` 支持单股小区间验证。
+- 默认 dry-run。
+- `--confirm` 才真实执行。
+- `--save-local` 必须配合 `--confirm`。
+- PostgreSQL / SQLite 元数据库不存行情明细。
+
+### V1.4.4 当前限制
+
+- 本版本不是全市场补数。
+- 本版本不是 core_50 / core_500 补数。
+- `smoke_backfill` 只适合单股小区间验证。
+- `save-local` 当前只适合小样本验证。
+- 当前没有迁移 `historical_loader.py`。
+- 当前没有接 Qlib、Alpha158、Alpha360。
+- 当前没有训练模型、自动交易、`xttrader`、ClickHouse、全市场分钟线或 tick 数据。
+- PostgreSQL / SQLite 元数据库不存行情明细。
+- 全量补数留到后续版本。
+
+### V1.4.4 安全 CLI 示例
+
+```bash
+python -m src.data_quality.smoke_backfill --stock-code 000001.SZ --start-date 20240101 --end-date 20240131 --adj qfq --dry-run
+python -m src.data_quality.smoke_backfill --stock-code 000001.SZ --start-date 20240101 --end-date 20240131 --adj qfq --confirm --no-save
+python -m src.data_quality.smoke_backfill --stock-code 000001.SZ --start-date 20240101 --end-date 20240131 --adj qfq --confirm --save-local
+```
+
+### 下一版本 V1.4.5 建议
+
+- core_50 / core_100 小批量补数。
+- 按 limit 分批执行。
+- 按 raw / qfq 分批。
+- 按年份区间分批。
+- 加强失败任务重试。
+- 批次覆盖率报告。
+- 批次任务统计。
+- Provider 稳定性统计。
+- 继续禁止全市场无控制补数。
+
+## V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证
 
 V1.4.3 完成覆盖率报告、缺口识别、缺口转修复任务，以及小样本补数验证的基础能力。本版本不是全市场历史数据补齐完成版；默认只扫描本地数据，所有新增 CLI 默认 dry-run，`--confirm` 才写元数据库，`--save-local` 必须配合 `--confirm`。
 
@@ -851,7 +901,8 @@ quant-a-share-platform/
 - V1.4.1 多数据源适配层、MiniQMT 接入与 PostgreSQL 元数据库 [完成]
 - V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础 [完成]
 - V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证 [完成]
-- V1.4.4 小样本真实回填验证加强、本地保存链路稳定化、覆盖率 before/after [下一步]
+- V1.4.4 小样本真实回填验证与本地保存链路稳定化 [完成]
+- V1.4.5 core_50/core_100 小批量补数与批次统计 [下一步]
 - V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 

@@ -231,9 +231,9 @@ def upsert_daily_data(table_name: str, df: pd.DataFrame) -> int:
     # Delete existing rows that overlap with the incoming data
     con.execute(f"""
         DELETE FROM {table_name}
-        WHERE (stock_code, trade_date) IN (
-            SELECT stock_code, trade_date FROM {temp_name}
-        )
+        USING {temp_name}
+        WHERE {table_name}.stock_code = {temp_name}.stock_code
+          AND {table_name}.trade_date = {temp_name}.trade_date
     """)
 
     # Insert new data

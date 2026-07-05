@@ -1,7 +1,12 @@
 """Test task_runner save_local behavior with mock providers."""
 from unittest.mock import patch, MagicMock
 import pandas as pd
-from src.data_tasks.task_runner import run_tasks
+import pytest
+from src.data_tasks.task_runner import (
+    _prepare_market_data_for_save,
+    _validate_market_data_for_save,
+    run_tasks,
+)
 
 
 class TestTaskRunnerSaveLocal:
@@ -29,5 +34,29 @@ class TestTaskRunnerSaveLocal:
 
     def test_save_local_requires_confirm(self) -> None:
         """save_local must be rejected without confirm."""
-        # This is enforced at CLI level, tested in smoke_backfill tests
-        pass
+        with pytest.raises(ValueError):
+            run_tasks(limit=1, confirm=False, save_local=True)
+
+    def test_save_validation_requires_trade_date(self) -> None:
+        df = pd.DataFrame({"close": [10.0]})
+        with pytest.raises(ValueError):
+            _validate_market_data_for_save(df, "qfq")
+
+    def test_save_validation_requires_close(self) -> None:
+        df = pd.DataFrame({"trade_date": ["2026-01-02"]})
+        with pytest.raises(ValueError):
+            _validate_market_data_for_save(df, "qfq")
+
+    def test_save_validation_rejects_bad_adj(self) -> None:
+        df = pd.DataFrame({"trade_date": ["2026-01-02"], "close": [10.0]})
+        with pytest.raises(ValueError):
+            _validate_market_data_for_save(df, "bad")
+
+    def test_prepare_save_data_adds_stock_code_from_symbol(self) -> None:
+        df = pd.DataFrame({
+            "symbol": ["1"],
+            "trade_date": ["2026-01-02"],
+            "close": [10.0],
+        })
+        out = _prepare_market_data_for_save(df, "000001", "qfq")
+        assert out["stock_code"].iloc[0] == "000001"

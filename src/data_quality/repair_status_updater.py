@@ -5,7 +5,13 @@ from __future__ import annotations
 from src.data_quality.coverage_repo import GapDetailRepository
 
 
-def update_gap_after_task(task_id: int, task_status: str) -> dict[str, int]:
+def update_gap_after_task(
+    task_id: int,
+    task_status: str,
+    *,
+    save_local: bool = True,
+    readback_success: bool = True,
+) -> dict[str, int]:
     """Update related gaps when a task completes.
 
     - success + coverage confirmed → repaired
@@ -17,7 +23,7 @@ def update_gap_after_task(task_id: int, task_status: str) -> dict[str, int]:
     updated = 0
     for g in gaps:
         if g.related_task_id == task_id:
-            if task_status == "success":
+            if task_status == "success" and save_local and readback_success:
                 repo.update_repair_status(g.gap_id, "repaired")
             else:
                 repo.update_repair_status(g.gap_id, "pending")

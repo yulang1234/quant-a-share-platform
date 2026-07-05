@@ -38,3 +38,16 @@ class TestRepairUpdater:
         ])
         result = update_gap_after_task(998, "failed")
         assert result["updated_gaps"] >= 1
+
+    def test_success_no_save_keeps_pending(self) -> None:
+        from src.data_quality.coverage_repo import GapDetailRepository
+        repo = GapDetailRepository()
+        repo.insert_batch([
+            {"symbol": "000003", "exchange": "SZ", "adj_type": "qfq", "gap_type": "single_day",
+             "missing_days": 1, "gap_start_date": "2020-03-01", "gap_end_date": "2020-03-01",
+             "severity": "low", "repair_status": "pending", "related_task_id": 997},
+        ])
+        result = update_gap_after_task(997, "success", save_local=False)
+        assert result["updated_gaps"] >= 1
+        gap = [g for g in repo.list_gaps(limit=10, repair_status="pending") if g.related_task_id == 997]
+        assert gap
