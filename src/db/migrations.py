@@ -9,14 +9,60 @@ from __future__ import annotations
 
 import sys
 
+from sqlalchemy import inspect, text
+
 from src.db.meta_engine import get_meta_engine, reset_meta_engine
 from src.db.schema_meta import ALL_TABLES, Base, DataProviderConfig
+
+
+def _column_type(engine, logical_type: str) -> str:
+    """Return a portable SQL type for lightweight additive migrations."""
+    if logical_type == "bool":
+        return "BOOLEAN DEFAULT 0" if engine.dialect.name == "sqlite" else "BOOLEAN DEFAULT FALSE"
+    if logical_type == "datetime":
+        return "DATETIME" if engine.dialect.name == "sqlite" else "TIMESTAMP"
+    return logical_type
+
+
+def _add_column_if_missing(engine, table_name: str, column_name: str, column_type: str) -> None:
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns(table_name)}
+    if column_name in existing:
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+
+
+def _apply_additive_migrations(engine) -> None:
+    """Add V1.4.6 columns to existing meta DBs without touching old data."""
+    for column_name, column_type in {
+        "is_suspended": _column_type(engine, "bool"),
+        "data_source": "VARCHAR(32)",
+    }.items():
+        _add_column_if_missing(engine, "security_master", column_name, column_type)
+
+    for column_name, column_type in {
+        "calendar_source": "VARCHAR(32) DEFAULT 'generated'",
+        "is_real_calendar": _column_type(engine, "bool"),
+        "source_provider": "VARCHAR(32)",
+        "source_updated_at": _column_type(engine, "datetime"),
+    }.items():
+        _add_column_if_missing(engine, "trading_calendar", column_name, column_type)
+
+    for column_name, column_type in {
+        "supports_calendar": _column_type(engine, "bool"),
+        "supports_stock_basic": _column_type(engine, "bool"),
+    }.items():
+        _add_column_if_missing(engine, "data_provider_config", column_name, column_type)
 
 
 def init_meta_db() -> None:
     """Create all meta-database tables if they do not exist."""
     engine = get_meta_engine()
     Base.metadata.create_all(engine)
+    _apply_additive_migrations(engine)
 
     # Seed default provider configs
     from sqlalchemy.orm import Session

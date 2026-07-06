@@ -80,15 +80,25 @@ def main(argv: list[str] | None = None) -> int:
     if not securities:
         print("[WARN] No securities found in universe or stock_pool."); return 0
 
-    # Get trading calendar open dates
+    # Get trading calendar open dates (V1.4.6: detect real vs fallback calendar)
     expected_all = []
+    calendar_info = {"is_real_calendar": False, "source_provider": None, "calendar_source": "none"}
     try:
         from src.trading_calendar.trading_calendar_service import TradingCalendarService
         csvc = TradingCalendarService()
         cal_dates = csvc.list_open_dates(args.start_date, args.end_date, "CN")
         expected_all = [d.trade_date.strftime("%Y-%m-%d") if hasattr(d.trade_date, "strftime") else str(d.trade_date)[:10] for d in cal_dates]
+        # Get calendar source info
+        cal_info = csvc.get_calendar_source_info("CN")
+        calendar_info = cal_info
     except Exception:
         pass
+
+    # V1.4.6: warn if not using real calendar
+    if not calendar_info.get("is_real_calendar", False) and expected_all:
+        print("[WARN] Using fallback trading calendar. Coverage result may be inaccurate.")
+    elif not expected_all:
+        print("[WARN] Trading calendar is empty. Coverage cannot be calculated.")
 
     adj_types = ["raw", "qfq"] if args.adj == "all" else [args.adj]
     table_map = {"raw": "stock_daily_raw", "qfq": "stock_daily_qfq"}
@@ -160,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     cal_missing = sum(1 for r in results if r["status"] == "calendar_missing")
 
     print(f"\nTotal securities scanned: {total}")
+    print(f"  calendar_source : {calendar_info.get('calendar_source', 'unknown')}")
+    print(f"  is_real_calendar: {calendar_info.get('is_real_calendar', False)}")
     print(f"  complete: {complete}, partial: {partial}, empty: {empty}, calendar_missing: {cal_missing}")
     for r in results[:10]:
         print(f"  {r['symbol']}.{r['exchange']} {r['adj']:4s} expected={r['expected']} actual={r['actual']} missing={r['missing']} rate={r['rate']} status={r['status']} gaps={r['gaps']}")

@@ -82,10 +82,52 @@ class LocalCacheProvider(MarketDataProvider):
         raise ProviderUnavailableError("Local cache does not support real-time quotes")
 
     def get_trading_calendar(self, start_date: str, end_date: str) -> pd.DataFrame:
-        raise ProviderUnavailableError("Local cache does not support trading calendar")
+        """Read trading calendar from local meta DB (V1.4.6)."""
+        try:
+            from src.trading_calendar.trading_calendar_service import TradingCalendarService
+            svc = TradingCalendarService()
+            dates = svc.list_open_dates(start_date, end_date, "CN")
+            if not dates:
+                return pd.DataFrame()
+            rows = []
+            for d in dates:
+                rows.append({
+                    "trade_date": d.trade_date,
+                    "is_open": d.is_open,
+                    "exchange": d.exchange,
+                    "provider_name": self.provider_name,
+                })
+            return pd.DataFrame(rows)
+        except Exception as e:
+            raise ProviderUnavailableError(f"LocalCache trading calendar failed: {e}") from e
 
     def get_stock_basic(self, stock_codes: list[str] | None = None) -> pd.DataFrame:
-        raise ProviderUnavailableError("Local cache does not support stock basic info")
+        """Read stock basic info from local security_master (V1.4.6)."""
+        try:
+            from src.repositories.security_master_repo import SecurityMasterRepository
+            repo = SecurityMasterRepository()
+            all_secs = repo.list_all(limit=10000)
+            rows = []
+            for s in all_secs:
+                rows.append({
+                    "stock_code": str(s.symbol).zfill(6),
+                    "stock_name": s.security_name or "",
+                    "exchange": s.exchange or "SZ",
+                    "list_date": s.list_date,
+                    "delist_date": s.delist_date,
+                    "list_status": s.status or "active",
+                    "is_active": s.status == "active",
+                    "is_st": bool(s.is_st),
+                    "is_delisted": s.status == "delisted",
+                    "data_source": "local_cache",
+                })
+            df = pd.DataFrame(rows) if rows else pd.DataFrame()
+            if stock_codes and not df.empty:
+                codes_set = {str(c).zfill(6) for c in stock_codes}
+                df = df[df["stock_code"].isin(codes_set)]
+            return df
+        except Exception as e:
+            raise ProviderUnavailableError(f"LocalCache stock_basic failed: {e}") from e
 
     def download_history(
         self, stock_code: str, start_date: str, end_date: str,

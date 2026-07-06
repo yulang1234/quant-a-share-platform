@@ -1,6 +1,66 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.5 core_50 / core_100 小批量补数与批次报告
+## 当前版本：V1.4.6 真实交易日历与证券主数据增强
+
+V1.4.6 将数据底座升级为真实交易日历和 Provider 驱动的证券主数据。AkShareProvider 实现 `get_trading_calendar` 和增强的 `get_stock_basic`，MarketDataService 新增统一的日历和股票基本信息接口，trading_calendar 支持 `calendar_source` / `is_real_calendar` 标记，security_master 支持 Provider 同步及 ST/退市/停牌字段增强。coverage_scanner 和 small_batch_report 优先使用真实日历并展示来源。
+
+### V1.4.6 已完成
+
+- 增强真实 A 股交易日历同步能力（AkShare `tool_trade_date_hist_sina`）。
+- AkShareProvider 实现 `get_trading_calendar` 和增强的 `get_stock_basic`（全市场股票信息）。
+- LocalCacheProvider 增强 `get_trading_calendar` / `get_stock_basic`（读本地 DB）。
+- MarketDataService 新增 `get_trading_calendar` / `get_stock_basic` 方法（Provider fallback + call log）。
+- `trading_calendar` 表新增 `calendar_source`、`is_real_calendar`、`source_provider`、`source_updated_at` 字段。
+- `security_master` 表新增 `is_suspended`、`data_source` 字段。
+- `sync_trading_calendar` 支持 Provider 驱动 + weekday fallback 警告。
+- `sync_security_master` 支持 Provider 驱动同步 + ST/退市识别 + 字段标准化。
+- `coverage_scanner` 优先使用真实交易日历，fallback 时显式警告。
+- `small_batch_report` 展示 `calendar_source` / `is_real_calendar`。
+- `task_stats` 增强失败原因分类（按 error_type / provider），增加 retryable 统计。
+- 保持 dry-run 默认。
+- 真实写入必须 `--confirm`。
+- PostgreSQL / SQLite 仍不存行情明细。
+
+### V1.4.6 当前限制
+
+- 本版本不是全市场历史数据补齐。
+- 本版本不是 core_500 补数。
+- 停牌状态依赖 Provider 能力，不保证所有 Provider 都可完整提供。
+- 如果 Provider 不可用，系统可能 fallback 到 weekday 日历，但会明确提示。
+- 本版本不做板块问诊、龙头识别、持仓决策。
+- 本版本不接 Qlib、Alpha158、Alpha360。
+- 本版本不训练模型、不自动交易、不接 xttrader。
+
+### V1.4.6 安全 CLI 示例
+
+```bash
+# 真实交易日历同步
+python -m src.trading_calendar.sync_trading_calendar --start-date 20240101 --end-date 20241231 --exchange CN --dry-run
+python -m src.trading_calendar.sync_trading_calendar --start-date 20240101 --end-date 20241231 --exchange CN --confirm
+
+# Provider 驱动 security_master 同步
+python -m src.security.sync_security_master --limit 20 --dry-run
+python -m src.security.sync_security_master --limit 20 --confirm
+
+# 覆盖率扫描（使用真实日历）
+python -m src.data_quality.coverage_scanner --universe core_50 --adj qfq --start-date 20240101 --end-date 20240131 --limit 10 --dry-run
+
+# 批次报告（展示日历来源）
+python -m src.backfill.small_batch_report --universe core_50 --start-date 20240101 --end-date 20240131 --adj qfq --limit 50
+
+# 任务统计（增强失败分类）
+python -m src.data_tasks.task_stats
+```
+
+### 下一版本 V1.4.7 建议
+
+- core_500 分批补数准备。
+- 按 Provider 限速和失败率自动分批。
+- 补数任务批次 ID。
+- 批次级 before / after 覆盖率快照。
+- 更完整的失败重试和跳过策略。
+
+## V1.4.5 core_50 / core_100 小批量补数与批次报告
 
 V1.4.5 将 V1.4.4 的小样本验证升级为 core_50 / core_100 小批量补数闭环。支持按 universe 生成任务、按 limit 分批执行、按 raw/qfq 分批、按年份区间分批、失败任务重试、批次覆盖率报告和 Provider 稳定性统计。保持所有操作安全可控（默认 dry-run，--confirm 才写）。本版本不是全市场 / core_500 补数版本。
 
@@ -961,7 +1021,8 @@ quant-a-share-platform/
 - V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证 [完成]
 - V1.4.4 小样本真实回填验证与本地保存链路稳定化 [完成]
 - V1.4.5 core_50/core_100 小批量补数与批次统计 [完成]
-- V1.4.6 交易日历 API / ST字段增强 / core_500 准备 [下一步]
+- V1.4.6 真实交易日历与证券主数据增强 [完成]
+- V1.4.7 core_500 分批补数准备 [下一步]
 - V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 

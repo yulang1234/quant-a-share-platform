@@ -134,6 +134,124 @@ class MarketDataService:
             f"Last error: {last_error}" if last_error else ""
         )
 
+    def get_trading_calendar(
+        self, start_date: str, end_date: str, exchange: str = "CN",
+        provider_name: str | None = None,
+    ) -> tuple[pd.DataFrame, str]:
+        """Fetch trading calendar with Provider fallback (V1.4.6).
+
+        Returns (DataFrame, provider_used).
+        DataFrame columns: trade_date, is_open, exchange, provider_name.
+        """
+        priorities = TRADING_CALENDAR_PRIORITY if not provider_name else [provider_name]
+
+        last_error = ""
+        for pname in priorities:
+            provider = self._providers.get(pname)
+            if provider is None:
+                continue
+
+            try:
+                health = provider.health_check()
+                self._update_health(pname, health)
+                if health["status"] in ("disabled",):
+                    self._log_call(pname, "get_trading_calendar", "skipped",
+                                   error_message="provider disabled")
+                    continue
+            except Exception:
+                pass
+
+            t0 = time.time()
+            try:
+                df = provider.get_trading_calendar(start_date, end_date)
+                elapsed = int((time.time() - t0) * 1000)
+                if df is not None and not df.empty:
+                    self._log_call(pname, "get_trading_calendar", "success",
+                                   duration_ms=elapsed, row_count=len(df))
+                    return df, pname
+                else:
+                    self._log_call(pname, "get_trading_calendar", "empty",
+                                   duration_ms=elapsed)
+                    continue
+            except ProviderError as e:
+                elapsed = int((time.time() - t0) * 1000)
+                self._log_call(pname, "get_trading_calendar", "failed",
+                               duration_ms=elapsed, error_type=type(e).__name__,
+                               error_message=str(e))
+                last_error = str(e)
+                continue
+            except Exception as e:
+                elapsed = int((time.time() - t0) * 1000)
+                self._log_call(pname, "get_trading_calendar", "failed",
+                               duration_ms=elapsed, error_type="Exception",
+                               error_message=str(e))
+                last_error = str(e)
+                continue
+
+        raise ProviderDataEmptyError(
+            f"No provider returned trading calendar for {start_date}~{end_date}. "
+            f"Last error: {last_error}" if last_error else ""
+        )
+
+    def get_stock_basic(
+        self, stock_codes: list[str] | None = None,
+        provider_name: str | None = None,
+    ) -> tuple[pd.DataFrame, str]:
+        """Fetch stock basic info with Provider fallback (V1.4.6).
+
+        Returns (DataFrame, provider_used).
+        DataFrame includes: stock_code, stock_name, exchange, is_st, is_delisted, etc.
+        """
+        priorities = STOCK_BASIC_PRIORITY if not provider_name else [provider_name]
+
+        last_error = ""
+        for pname in priorities:
+            provider = self._providers.get(pname)
+            if provider is None:
+                continue
+
+            try:
+                health = provider.health_check()
+                self._update_health(pname, health)
+                if health["status"] in ("disabled",):
+                    self._log_call(pname, "get_stock_basic", "skipped",
+                                   error_message="provider disabled")
+                    continue
+            except Exception:
+                pass
+
+            t0 = time.time()
+            try:
+                df = provider.get_stock_basic(stock_codes)
+                elapsed = int((time.time() - t0) * 1000)
+                if df is not None and not df.empty:
+                    self._log_call(pname, "get_stock_basic", "success",
+                                   duration_ms=elapsed, row_count=len(df))
+                    return df, pname
+                else:
+                    self._log_call(pname, "get_stock_basic", "empty",
+                                   duration_ms=elapsed)
+                    continue
+            except ProviderError as e:
+                elapsed = int((time.time() - t0) * 1000)
+                self._log_call(pname, "get_stock_basic", "failed",
+                               duration_ms=elapsed, error_type=type(e).__name__,
+                               error_message=str(e))
+                last_error = str(e)
+                continue
+            except Exception as e:
+                elapsed = int((time.time() - t0) * 1000)
+                self._log_call(pname, "get_stock_basic", "failed",
+                               duration_ms=elapsed, error_type="Exception",
+                               error_message=str(e))
+                last_error = str(e)
+                continue
+
+        raise ProviderDataEmptyError(
+            f"No provider returned stock basic info. "
+            f"Last error: {last_error}" if last_error else ""
+        )
+
     def check_all_providers(self) -> list[dict[str, Any]]:
         results = []
         for pname, provider in self._providers.items():

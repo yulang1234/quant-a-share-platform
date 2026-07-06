@@ -39,6 +39,9 @@ class SecurityMaster(Base):
     market_board = Column(String(32))
     industry = Column(String(64))
     is_st = Column(Boolean, default=False)
+    # V1.4.6: enhanced status fields
+    is_suspended = Column(Boolean, default=False)
+    data_source = Column(String(32))  # which provider populated this row
     status = Column(String(16), default="active")
     currency = Column(String(8), default="CNY")
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -155,6 +158,11 @@ class TradingCalendar(Base):
     pre_trade_date = Column(DateTime)
     next_trade_date = Column(DateTime)
     source = Column(String(32), default="manual")
+    # V1.4.6: real calendar tracking
+    calendar_source = Column(String(32), default="generated")  # akshare / generated / manual
+    is_real_calendar = Column(Boolean, default=False)          # True = real exchange calendar
+    source_provider = Column(String(32))                        # provider name (akshare/tushare)
+    source_updated_at = Column(DateTime)                        # when provider data was fetched
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     created_at = Column(DateTime, default=datetime.now)
 

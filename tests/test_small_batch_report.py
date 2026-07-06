@@ -47,7 +47,7 @@ class TestSmallBatchReport:
         assert report.get("stock_count", 0) == 0
 
     def test_coverage_fields_present(self) -> None:
-        """Report should contain all required coverage fields."""
+        """Report should contain all required coverage fields including V1.4.6 calendar info."""
         _seed_core_universe("core_50", 5)
         from src.backfill.small_batch_report import generate_report
 
@@ -61,6 +61,8 @@ class TestSmallBatchReport:
             "stock_count", "complete_count", "partial_count",
             "empty_count", "calendar_missing_count",
             "avg_coverage_rate", "min_coverage_rate", "max_coverage_rate",
+            # V1.4.6: calendar source info
+            "calendar_source", "is_real_calendar", "calendar_warning",
         ]
         for key in required_keys:
             assert key in report, f"Missing key: {key}"

@@ -82,11 +82,89 @@ class AkShareProvider(MarketDataProvider):
         return validate_daily_bar_df(df)
 
     def get_stock_basic(self, stock_codes: list[str] | None = None) -> pd.DataFrame:
+        """Fetch stock basic info from AkShare (V1.4.6 enhanced).
+
+        Returns standardised DataFrame with: stock_code, stock_name, exchange,
+        list_date, delist_date, list_status, is_active, is_st, is_delisted.
+        """
         try:
-            info = self._client.get_stock_basic_info(stock_codes[0] if stock_codes else "000001")
-            return pd.DataFrame([info]) if info.get("stock_name") else pd.DataFrame()
+            import akshare as ak
+            # Use akshare stock_info_a_code_name for all A-share stocks
+            df = ak.stock_info_a_code_name()
+            if df is None or df.empty:
+                return pd.DataFrame()
+
+            # Standardise columns
+            col_map = {
+                "code": "stock_code", "股票代码": "stock_code",
+                "name": "stock_name", "股票简称": "stock_name",
+                "exchange": "exchange", "交易所": "exchange",
+                "list_date": "list_date", "上市日期": "list_date",
+                "delist_date": "delist_date", "退市日期": "delist_date",
+            }
+            df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+
+            # Ensure stock_code is 6-digit string
+            if "stock_code" in df.columns:
+                df["stock_code"] = df["stock_code"].astype(str).str.zfill(6)
+
+            # Infer exchange if missing
+            if "exchange" not in df.columns:
+                df["exchange"] = df["stock_code"].apply(
+                    lambda x: "SH" if str(x).startswith("6") else
+                    ("BJ" if str(x).startswith(("8", "4")) else "SZ")
+                )
+
+            # Compute derived fields
+            if "stock_name" in df.columns:
+                names = df["stock_name"].astype(str).str.upper()
+                df["is_st"] = names.str.contains("ST|\\*ST|S\\*ST|PT", regex=True, na=False)
+            else:
+                df["is_st"] = False
+
+            if "delist_date" in df.columns:
+                df["is_delisted"] = df["delist_date"].notna() & (df["delist_date"] != "")
+            else:
+                df["is_delisted"] = False
+
+            if "list_status" not in df.columns:
+                df["list_status"] = "L"  # default: listed
+
+            df["is_active"] = ~df["is_delisted"] & ~df["is_st"]
+            df["data_source"] = self.provider_name
+
+            # Filter by requested codes if provided
+            if stock_codes:
+                codes_set = {str(c).zfill(6) for c in stock_codes}
+                df = df[df["stock_code"].isin(codes_set)]
+
+            return df
         except Exception as e:
             raise ProviderUnavailableError(f"AkShare stock_basic failed: {e}") from e
+
+    def get_trading_calendar(self, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch real A-share trading calendar from AkShare (V1.4.6).
+
+        Uses ak.tool_trade_date_hist_sina() for sina-sourced trading calendar.
+        Falls back to weekday generation if unavailable.
+        """
+        try:
+            import akshare as ak
+            df = ak.tool_trade_date_hist_sina()
+            if df is None or df.empty:
+                raise ProviderUnavailableError("AkShare trading calendar returned empty")
+
+            # Standardise
+            date_col = "trade_date" if "trade_date" in df.columns else df.columns[0]
+            df = df.rename(columns={date_col: "trade_date"})
+            df["trade_date"] = pd.to_datetime(df["trade_date"])
+            df = df[(df["trade_date"] >= start_date) & (df["trade_date"] <= end_date)]
+            df["is_open"] = True
+            df["exchange"] = "CN"
+            df["provider_name"] = self.provider_name
+            return df[["trade_date", "is_open", "exchange", "provider_name"]]
+        except Exception as e:
+            raise ProviderUnavailableError(f"AkShare trading calendar failed: {e}") from e
 
     # ── Skeletons ───────────────────────────────────────────────
 
@@ -95,9 +173,6 @@ class AkShareProvider(MarketDataProvider):
 
     def get_realtime_quote(self, stock_code: str) -> pd.DataFrame:
         raise ProviderUnavailableError("AkShare real-time quote not implemented")
-
-    def get_trading_calendar(self, start_date: str, end_date: str) -> pd.DataFrame:
-        raise ProviderUnavailableError("AkShare trading calendar not implemented")
 
     def download_history(
         self, stock_code: str, start_date: str, end_date: str,

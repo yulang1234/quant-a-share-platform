@@ -161,6 +161,22 @@ def generate_report(
     expected_dates = _get_trading_calendar_dates(start_date, end_date)
     calendar_available = len(expected_dates) > 0
 
+    # V1.4.6: get calendar source info
+    calendar_source = "none"
+    is_real_calendar = False
+    calendar_warning = ""
+    try:
+        from src.trading_calendar.trading_calendar_service import TradingCalendarService
+        csvc = TradingCalendarService()
+        cal_info = csvc.get_calendar_source_info("CN")
+        calendar_source = cal_info.get("calendar_source", "none")
+        is_real_calendar = cal_info.get("is_real_calendar", False)
+    except Exception:
+        pass
+
+    if not is_real_calendar and calendar_available:
+        calendar_warning = "Coverage result may be inaccurate."
+
     results: list[dict[str, Any]] = []
 
     for member in members:
@@ -229,6 +245,9 @@ def generate_report(
         "end_date": end_date,
         "stock_count": len(members),
         "calendar_available": calendar_available,
+        "calendar_source": calendar_source,
+        "is_real_calendar": is_real_calendar,
+        "calendar_warning": calendar_warning,
         "complete_count": len(complete),
         "partial_count": len(partial),
         "empty_count": len(empty),
@@ -302,6 +321,13 @@ def main() -> int:
 
     if not report.get("calendar_available"):
         print(f"  [WARN] Trading calendar not available — coverage rates may be inaccurate.")
+
+    # V1.4.6: show calendar source info
+    print(f"\n  --- Calendar ---")
+    print(f"  Source            : {report.get('calendar_source', 'unknown')}")
+    print(f"  Is real calendar  : {report.get('is_real_calendar', False)}")
+    if report.get("calendar_warning"):
+        print(f"  Warning           : {report['calendar_warning']}")
 
     print(f"\n  --- Coverage Summary ---")
     print(f"  Complete           : {report.get('complete_count', 0)}")
