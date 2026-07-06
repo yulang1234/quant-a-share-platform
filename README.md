@@ -1,6 +1,58 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.4 小样本真实回填验证与本地保存链路稳定化
+## 当前版本：V1.4.5 core_50 / core_100 小批量补数与批次报告
+
+V1.4.5 将 V1.4.4 的小样本验证升级为 core_50 / core_100 小批量补数闭环。支持按 universe 生成任务、按 limit 分批执行、按 raw/qfq 分批、按年份区间分批、失败任务重试、批次覆盖率报告和 Provider 稳定性统计。保持所有操作安全可控（默认 dry-run，--confirm 才写）。本版本不是全市场 / core_500 补数版本。
+
+### V1.4.5 已完成
+
+- 新增 `core_universe_builder`，支持构建 core_50 / core_100 小批量 universe。
+- 新增 `small_batch_planner`，支持按 universe / adj / year / limit 生成补数任务。
+- 新增 `small_batch_runner`，安全包装 `task_runner`，支持 `--no-save` / `--save-local`。
+- 新增 `small_batch_report`，输出批次覆盖率摘要。
+- 新增 Provider 批次稳定性统计（集成在 `small_batch_report` 中）。
+- 保持 dry-run 默认。
+- 真实写入任务必须 `--confirm`。
+- 真实保存本地行情必须 `--confirm --save-local`。
+- PostgreSQL / SQLite 仍不存行情明细。
+
+### V1.4.5 当前限制
+
+- 本版本不是全市场补数。
+- 本版本不是 core_500 补数。
+- core_50 / core_100 的选股逻辑先以稳定、安全、可验证为主，不代表最终投研股票池。
+- 行业资讯、板块问诊、龙头识别、持仓决策不在本版本范围内。
+- 当前不接 Qlib、Alpha158、Alpha360。
+- 当前不训练模型、不自动交易、不接 xttrader。
+
+### V1.4.5 安全 CLI 示例
+
+```bash
+# 构建 core_50 / core_100
+python -m src.backfill.core_universe_builder --core-size 50 --dry-run
+python -m src.backfill.core_universe_builder --core-size 50 --confirm
+
+# 生成小批量任务
+python -m src.backfill.small_batch_planner --universe core_50 --start-date 20240101 --end-date 20240131 --adj qfq --limit 5 --dry-run
+python -m src.backfill.small_batch_planner --universe core_50 --start-date 20240101 --end-date 20240131 --adj qfq --limit 5 --confirm
+
+# 执行任务
+python -m src.backfill.small_batch_runner --limit 5 --adj qfq --confirm --no-save
+python -m src.backfill.small_batch_runner --limit 5 --adj qfq --confirm --save-local
+
+# 批次覆盖率报告
+python -m src.backfill.small_batch_report --universe core_50 --start-date 20240101 --end-date 20240131 --adj qfq --limit 50
+```
+
+### 下一版本 V1.4.6 建议
+
+- 真实交易日历 API 接入。
+- 真实 Provider 驱动 security_master 同步。
+- ST / 退市 / 停牌字段增强。
+- core_500 分批补数准备。
+- 补数任务失败原因分类增强。
+
+## V1.4.4 小样本真实回填验证与本地保存链路稳定化
 
 V1.4.4 强化小样本真实回填验证和本地保存链路。`task_runner` 支持 `save-local`，`smoke_backfill` 支持单股小区间验证，`repair_status_updater` 支持任务成功后更新 gap 状态，`coverage_compare` 支持 before / after 覆盖率对比。本版本不是 core_50 / core_500 / 全市场补数版本。
 
@@ -803,6 +855,12 @@ quant-a-share-platform/
 │   │   ├── multi_factor_strategy.py
 │   │   ├── selector.py
 │   │   └── run_topk_strategy.py
+│   ├── backfill/                    # V1.4.5 core_50/core_100 小批量补数
+│   │   ├── __init__.py
+│   │   ├── core_universe_builder.py
+│   │   ├── small_batch_planner.py
+│   │   ├── small_batch_runner.py
+│   │   └── small_batch_report.py
 │   ├── backtest/                  # V1.1 基础回测引擎
 │   │   ├── backtest_config.py
 │   │   ├── position_builder.py
@@ -902,7 +960,8 @@ quant-a-share-platform/
 - V1.4.2 全市场证券主数据、交易日历与历史数据任务队列基础 [完成]
 - V1.4.3 数据覆盖率报告、缺口识别与小样本补数验证 [完成]
 - V1.4.4 小样本真实回填验证与本地保存链路稳定化 [完成]
-- V1.4.5 core_50/core_100 小批量补数与批次统计 [下一步]
+- V1.4.5 core_50/core_100 小批量补数与批次统计 [完成]
+- V1.4.6 交易日历 API / ST字段增强 / core_500 准备 [下一步]
 - V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 
