@@ -16,7 +16,7 @@ from typing import Any
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-VALID_CORE_SIZES: frozenset[int] = frozenset({50, 100})
+VALID_CORE_SIZES: frozenset[int] = frozenset({50, 100, 500})
 
 # Patterns to exclude (pessimistic matching)
 _BLACKLIST_KEYWORDS: tuple[str, ...] = ("ST", "*ST", "PT", "退市", "摘牌")
@@ -65,7 +65,7 @@ def _select_core_stocks(
     Returns ``(selected, skipped)``.
     """
     if core_size not in VALID_CORE_SIZES:
-        raise ValueError(f"core_size must be 50 or 100, got {core_size}")
+        raise ValueError(f"core_size must be 50, 100, or 500, got {core_size}")
 
     valid: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -215,7 +215,7 @@ def build_core_universe(
     confirm output.
     """
     if core_size not in VALID_CORE_SIZES:
-        raise ValueError(f"core_size must be 50 or 100, got {core_size}")
+        raise ValueError(f"core_size must be 50, 100, or 500, got {core_size}")
 
     universe_name = f"core_{core_size}"
 
@@ -306,8 +306,8 @@ def main() -> int:
         description="V1.4.5 Core Universe Builder — build core_50 / core_100 stock pools",
     )
     p.add_argument(
-        "--core-size", type=int, required=True, choices=[50, 100],
-        help="Size of the core universe (only 50 or 100 allowed)",
+        "--core-size", type=int, required=True, choices=[50, 100, 500],
+        help="Size of the core universe (50, 100, or 500)",
     )
     p.add_argument(
         "--dry-run", action="store_true", default=True,
@@ -341,6 +341,10 @@ def main() -> int:
     universe_name = result["universe_name"]
     selected = result.get("selected", [])
     skipped = result.get("skipped", [])
+
+    # V1.4.7: core_500 warning
+    if args.core_size == 500:
+        print("[WARN] core_500 is for staged batch backfill only. It will not run full backfill automatically.")
 
     if dry_run:
         print(f"\n[DRY-RUN] Core Universe Builder")

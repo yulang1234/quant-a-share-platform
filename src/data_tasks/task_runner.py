@@ -38,6 +38,9 @@ def run_tasks(
     confirm: bool = False,
     sleep_seconds: float = 1.0,
     provider_name: str | None = None,
+    batch_id: str | None = None,
+    stop_on_failed_rate: bool = False,
+    max_failed_rate: float = 0.5,
 ) -> dict[str, int]:
     if save_local and not confirm:
         raise ValueError("save_local requires confirm=True")
@@ -49,7 +52,7 @@ def run_tasks(
     log_repo = DataLoadTaskLogRepository()
     svc = None
 
-    tasks = task_repo.list_pending(limit=limit, status=status_filter)
+    tasks = task_repo.list_pending(limit=limit, status=status_filter, batch_id=batch_id)
     if not tasks:
         return {"total": 0, "success": 0, "failed": 0, "empty": 0, "skipped": 0}
 
@@ -123,6 +126,16 @@ def run_tasks(
             log_repo.log(task.task_id, status_before, "failed", error_type=type(e).__name__,
                          error_message=str(e)[:500], duration_ms=elapsed)
             result["failed"] += 1
+
+        # V1.4.7: stop if failed rate exceeds threshold
+        if stop_on_failed_rate and result["total"] > 0:
+            executed = result["success"] + result["failed"] + result["empty"]
+            if executed > 0:
+                current_rate = result["failed"] / executed
+                if current_rate > max_failed_rate:
+                    print(f"[WARN] Failed rate {current_rate:.1%} exceeds threshold {max_failed_rate:.1%}. "
+                          f"Stopping batch at {result['failed']} failures.")
+                    break
 
         time.sleep(sleep_seconds)
 

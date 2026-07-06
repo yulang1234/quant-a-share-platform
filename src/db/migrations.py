@@ -57,6 +57,9 @@ def _apply_additive_migrations(engine) -> None:
     }.items():
         _add_column_if_missing(engine, "data_provider_config", column_name, column_type)
 
+    # V1.4.7: batch_id on data_load_task
+    _add_column_if_missing(engine, "data_load_task", "batch_id", "VARCHAR(64)")
+
 
 def init_meta_db() -> None:
     """Create all meta-database tables if they do not exist."""

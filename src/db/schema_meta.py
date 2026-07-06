@@ -183,6 +183,8 @@ class DataLoadTask(Base):
     start_date = Column(String(16))
     end_date = Column(String(16))
     provider_preference = Column(String(64))
+    # V1.4.7: batch tracking
+    batch_id = Column(String(64))
     status = Column(String(16), default="pending")
     attempt_count = Column(Integer, default=0)
     max_attempts = Column(Integer, default=5)
@@ -265,9 +267,68 @@ class DataGapDetail(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
+# ── 12. backfill_batch (V1.4.7) ──────────────────────────────────────────────
+
+class BackfillBatch(Base):
+    __tablename__ = "backfill_batch"
+
+    batch_id = Column(String(64), primary_key=True)
+    batch_name = Column(String(128))
+    universe_name = Column(String(64))
+    adj_type = Column(String(8))
+    start_date = Column(String(16))
+    end_date = Column(String(16))
+    split = Column(String(16), default="yearly")
+    planned_task_count = Column(Integer, default=0)
+    written_task_count = Column(Integer, default=0)
+    executed_task_count = Column(Integer, default=0)
+    success_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+    empty_count = Column(Integer, default=0)
+    skipped_count = Column(Integer, default=0)
+    status = Column(String(24), default="planned")
+    dry_run = Column(Boolean, default=True)
+    confirm = Column(Boolean, default=False)
+    save_local = Column(Boolean, default=False)
+    max_limit = Column(Integer, default=20)
+    provider_name = Column(String(32))
+    sleep_seconds = Column(Float, default=1.0)
+    error_message = Column(Text)
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# ── 13. backfill_batch_snapshot (V1.4.7) ─────────────────────────────────────
+
+class BackfillBatchSnapshot(Base):
+    __tablename__ = "backfill_batch_snapshot"
+
+    snapshot_id = Column(Integer, primary_key=True, autoincrement=True)
+    batch_id = Column(String(64), nullable=False)
+    snapshot_type = Column(String(16), nullable=False)  # "before" or "after"
+    universe_name = Column(String(64))
+    adj_type = Column(String(8))
+    start_date = Column(String(16))
+    end_date = Column(String(16))
+    stock_count = Column(Integer, default=0)
+    complete_count = Column(Integer, default=0)
+    partial_count = Column(Integer, default=0)
+    empty_count = Column(Integer, default=0)
+    calendar_missing_count = Column(Integer, default=0)
+    avg_coverage_rate = Column(Float)
+    min_coverage_rate = Column(Float)
+    max_coverage_rate = Column(Float)
+    calendar_source = Column(String(32))
+    is_real_calendar = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 ALL_TABLES = [
     SecurityMaster, UniverseConfig, UniverseMember,
     DataProviderConfig, DataProviderHealth, DataProviderCallLog,
     TradingCalendar, DataLoadTask, DataLoadTaskLog,
     DataCoverageReport, DataGapDetail,
+    BackfillBatch, BackfillBatchSnapshot,
 ]

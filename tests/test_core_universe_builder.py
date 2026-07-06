@@ -32,10 +32,10 @@ class TestCoreUniverseBuilder:
             assert isinstance(result, dict)
 
         # Invalid size should raise
-        with pytest.raises(ValueError, match="core_size must be 50 or 100"):
+        with pytest.raises(ValueError, match="core_size must be 50, 100, or 500"):
             build_core_universe(core_size=200, dry_run=True)
 
-        with pytest.raises(ValueError, match="core_size must be 50 or 100"):
+        with pytest.raises(ValueError, match="core_size must be 50, 100, or 500"):
             build_core_universe(core_size=0, dry_run=True)
 
     def test_dry_run_does_not_write(self) -> None:

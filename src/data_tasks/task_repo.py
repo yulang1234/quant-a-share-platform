@@ -21,8 +21,12 @@ class DataLoadTaskRepository:
     def get_by_id(self, task_id: int) -> DataLoadTask | None:
         return self._s.query(DataLoadTask).filter_by(task_id=task_id).first()
 
-    def list_pending(self, limit: int = 10, status: str = "pending") -> list[DataLoadTask]:
-        return self._s.query(DataLoadTask).filter(DataLoadTask.status == status).limit(limit).all()
+    def list_pending(self, limit: int = 10, status: str = "pending",
+                     batch_id: str | None = None) -> list[DataLoadTask]:
+        q = self._s.query(DataLoadTask).filter(DataLoadTask.status == status)
+        if batch_id:
+            q = q.filter(DataLoadTask.batch_id == batch_id)
+        return q.limit(limit).all()
 
     def count_by_status(self) -> dict[str, int]:
         rows = self._s.query(DataLoadTask.status, __import__('sqlalchemy').func.count()).group_by(DataLoadTask.status).all()
@@ -53,16 +57,20 @@ class DataLoadTaskRepository:
         return [(str(r[0])[:200], int(r[1])) for r in rows]
 
     def upsert_task(self, symbol: str, exchange: str, data_type: str, adj_type: str,
-                    start_date, end_date, **kwargs) -> DataLoadTask:
+                    start_date, end_date, batch_id: str | None = None, **kwargs) -> DataLoadTask:
         existing = self._s.query(DataLoadTask).filter_by(
             symbol=str(symbol).zfill(6), exchange=exchange.upper(),
             data_type=data_type, adj_type=adj_type,
             start_date=start_date, end_date=end_date,
         ).first()
         if existing:
+            if batch_id and not existing.batch_id:
+                existing.batch_id = batch_id
+                self._s.commit()
             return existing
         return self.create(symbol=symbol, exchange=exchange, data_type=data_type,
-                           adj_type=adj_type, start_date=start_date, end_date=end_date, **kwargs)
+                           adj_type=adj_type, start_date=start_date, end_date=end_date,
+                           batch_id=batch_id, **kwargs)
 
 
 class DataLoadTaskLogRepository:
