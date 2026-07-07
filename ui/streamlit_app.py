@@ -505,8 +505,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源", "补数批次"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers, t_backfill = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "数据质量总控", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源", "补数批次"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_quality_dashboard, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers, t_backfill = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -1259,6 +1259,350 @@ with t_repair:
             "# 真实重建 Parquet\n"
             "python -m src.data_repair.run_data_repair --pool core_500 --stock-code 000001 --adj all --action rebuild-parquet --no-dry-run --confirm",
             language="bash",
+        )
+
+# ======================================================================
+#  TAB: 数据质量总控 (V1.4.10)
+# ======================================================================
+
+with t_quality_dashboard:
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>"
+        "V1.4.10 数据质量总控台 -- 查看 A 股 AI 投研系统数据底座的整体健康状态。"
+        "本页面只做检查、展示、导出和建议，不执行真实补数；只读 meta DB / DuckDB / Parquet，不联网。"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    from ui.components.data_quality_view import (
+        load_quality_overview, load_coverage_table, load_calendar_summary,
+        load_security_master_summary, load_provider_table,
+        load_batch_health_summary, load_storage_table,
+        overview_metrics, status_to_cn, to_csv_bytes,
+        HEALTH_STATUS_CN, OVERALL_STATUS_CN,
+        COVERAGE_COLUMNS, PROVIDER_COLUMNS, STORAGE_COLUMNS,
+    )
+
+    # ── 总体健康状态卡 ───────────────────────────────────────────────────
+    overview_cn = load_quality_overview()
+    metrics = overview_metrics(overview_cn)
+
+    # Hero banner with overall status, score, generated_at, reason
+    overall_color = {
+        "健康": "#3ecf8e", "可用但有缺口": "#c8a96b",
+        "风险较高": "#e85a5a", "不建议分析": "#d83e3e", "未知": "#7a88a6",
+    }.get(metrics["overall_status_cn"], "#7a88a6")
+    score = metrics["overall_score"]
+    score_str = f"{int(score)}" if score is not None else "--"
+    gen = metrics["generated_at"]
+    st.markdown(
+        f'<div style="background:#141d30;border:1px solid rgba(255,255,255,0.08);'
+        f'border-radius:10px;padding:1.1rem 1.3rem;box-shadow:0 2px 8px rgba(0,0,0,0.3);'
+        f'margin-bottom:0.8rem;">'
+        f'<div style="font-size:0.82rem;font-weight:600;color:#b0bdd0;'
+        f'margin-bottom:0.6rem;">总体健康状态</div>'
+        f'<div style="display:flex;gap:1.5rem;align-items:center;">'
+        f'<span style="background:{overall_color};color:#0b1020;border-radius:8px;'
+        f'padding:4px 16px;font-size:0.95rem;font-weight:700;">'
+        f'{metrics["overall_status_cn"]}</span>'
+        f'<span style="font-size:1.6rem;font-weight:700;color:#f0f4ff;">{score_str}</span>'
+        f'<span style="color:#7a88a6;font-size:0.78rem;">/ 100</span>'
+        f'<span style="color:#9aa6bd;font-size:0.78rem;margin-left:auto;">'
+        f'生成时间: {gen or "--"}</span>'
+        f'</div>'
+        f'<div style="font-size:0.8rem;color:#c8d0e0;margin-top:0.6rem;">'
+        f'{metrics["status_reason"] or "--"}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── 核心指标卡 ───────────────────────────────────────────────────────
+    def _rate(v):
+        return f"{v:.1%}" if v is not None else "--"
+
+    sec_summary = load_security_master_summary()
+    cal_summary = load_calendar_summary()
+    bat_summary = load_batch_health_summary()
+
+    q1, q2, q3, q4, q5 = st.columns(5)
+    q1.metric("core_50 覆盖率", _rate(metrics.get("core_50_coverage_rate")))
+    q2.metric("core_100 覆盖率", _rate(metrics.get("core_100_coverage_rate")))
+    q3.metric("core_500 覆盖率", _rate(metrics.get("core_500_coverage_rate")))
+    q4.metric("raw 覆盖率", _rate(metrics.get("raw_coverage_rate")))
+    q5.metric("qfq 覆盖率", _rate(metrics.get("qfq_coverage_rate")))
+
+    q6, q7, q8, q9, q10 = st.columns(5)
+    q6.metric("交易日历状态", cal_summary.get("health_status_cn", "未知"))
+    q7.metric("security_master 完整度",
+              _rate(sec_summary.get("completeness_rate")))
+    q8.metric("最近 Provider 状态",
+              overview_cn.get("provider_status_cn", "未知"))
+    q9.metric("最近 batch 状态",
+              bat_summary.get("health_status_cn", "未知"))
+    q10.metric("可重试失败任务数", bat_summary.get("retryable_tasks", 0))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── 覆盖率区域 ────────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.caption("覆盖率汇总")
+        cf1, cf2, cf3 = st.columns(3)
+        with cf1:
+            f_cov_uni = st.text_input("universe_name", placeholder="core_50",
+                                      key="qd_cov_uni")
+        with cf2:
+            f_cov_adj = st.selectbox(
+                "data_type", ["", "raw", "qfq"],
+                format_func=lambda x: {"raw": "不复权", "qfq": "前复权"}.get(x, x or "全部"),
+                key="qd_cov_adj")
+        with cf3:
+            f_cov_level = st.selectbox(
+                "coverage_level",
+                ["", "healthy", "usable_with_gaps", "risky",
+                 "not_recommended", "unknown"],
+                format_func=lambda x: {
+                    "healthy": "健康", "usable_with_gaps": "可用但有缺口",
+                    "risky": "风险较高", "not_recommended": "不建议分析",
+                    "unknown": "未知",
+                }.get(x, x or "全部"),
+                key="qd_cov_level")
+
+        cov_df = load_coverage_table(
+            universe_names=[f_cov_uni.strip()] if f_cov_uni.strip() else None,
+            adj_types=[f_cov_adj] if f_cov_adj else None,
+            coverage_level=f_cov_level or None,
+        )
+        if cov_df.empty:
+            st.info("暂无覆盖率数据。可先在命令行 dry-run 检查覆盖率扫描；本页面不会触发扫描或写库。")
+        else:
+            disp_cov = cov_df.copy()
+            if "coverage_rate" in disp_cov.columns:
+                disp_cov["coverage_rate"] = disp_cov["coverage_rate"].apply(
+                    lambda x: f"{x:.2%}" if pd.notna(x) else "--")
+            disp_cov = disp_cov.rename(columns={
+                "universe_name": "股票范围", "data_type": "数据类型",
+                "expected_count": "应有天数", "actual_count": "实际天数",
+                "missing_count": "缺失天数", "coverage_rate": "覆盖率",
+                "coverage_level": "覆盖率等级", "last_scan_time": "最近扫描",
+                "report_path": "报告路径",
+            })
+            st.dataframe(disp_cov, use_container_width=True, height=300,
+                         key="df_qd_coverage", selection_mode="single-row",
+                         on_select="ignore")
+
+    # ── 交易日历区域 ──────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("交易日历健康度")
+        cal_row = pd.DataFrame([{
+            "calendar_source": cal_summary.get("calendar_source") or "-",
+            "min_trade_date": cal_summary.get("min_trade_date") or "-",
+            "max_trade_date": cal_summary.get("max_trade_date") or "-",
+            "total_trade_days": cal_summary.get("total_trade_days", 0),
+            "latest_trade_day": cal_summary.get("latest_trade_day") or "-",
+            "next_trade_day": cal_summary.get("next_trade_day") or "-",
+            "missing_recent_days": cal_summary.get("missing_recent_days", 0),
+            "is_recent_calendar_ready": "是" if cal_summary.get("is_recent_calendar_ready") else "否",
+            "health_status": cal_summary.get("health_status_cn", "未知"),
+            "issue_summary": cal_summary.get("issue_summary", "-"),
+        }])
+        cal_row = cal_row.rename(columns={
+            "calendar_source": "日历来源", "min_trade_date": "最早交易日",
+            "max_trade_date": "最晚交易日", "total_trade_days": "开放日总数",
+            "latest_trade_day": "最近交易日", "next_trade_day": "下一交易日",
+            "missing_recent_days": "近期缺失天数",
+            "is_recent_calendar_ready": "近期可用",
+            "health_status": "健康状态", "issue_summary": "问题摘要",
+        })
+        st.dataframe(cal_row, use_container_width=True, height=80,
+                     key="df_qd_calendar", hide_index=True,
+                     selection_mode="single-row", on_select="ignore")
+
+    # ── security_master 区域 ─────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("证券主数据健康度")
+        sec_row = pd.DataFrame([{
+            "total_securities": sec_summary.get("total_securities", 0),
+            "active_securities": sec_summary.get("active_securities", 0),
+            "delisted_securities": sec_summary.get("delisted_securities", 0),
+            "st_count": sec_summary.get("st_count", 0),
+            "suspended_count": sec_summary.get("suspended_count", 0),
+            "missing_name": sec_summary.get("missing_name_count", 0),
+            "missing_list_date": sec_summary.get("missing_list_date_count", 0),
+            "missing_delist_date": sec_summary.get("missing_delist_date_count", 0),
+            "missing_exchange": sec_summary.get("missing_exchange_count", 0),
+            "missing_status": sec_summary.get("missing_status_count", 0),
+            "completeness_rate": _rate(sec_summary.get("completeness_rate")),
+            "health_status": sec_summary.get("health_status_cn", "未知"),
+            "issue_summary": sec_summary.get("issue_summary", "-"),
+        }])
+        sec_row = sec_row.rename(columns={
+            "total_securities": "证券总数", "active_securities": "活跃",
+            "delisted_securities": "退市", "st_count": "ST 数",
+            "suspended_count": "停牌数", "missing_name": "缺名称",
+            "missing_list_date": "缺上市日", "missing_delist_date": "缺退市日",
+            "missing_exchange": "缺交易所", "missing_status": "缺状态",
+            "completeness_rate": "完整度", "health_status": "健康状态",
+            "issue_summary": "问题摘要",
+        })
+        st.dataframe(sec_row, use_container_width=True, height=80,
+                     key="df_qd_security", hide_index=True,
+                     selection_mode="single-row", on_select="ignore")
+
+    # ── Provider 健康区域 ────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("Provider 健康度")
+        prov_df = load_provider_table()
+        if prov_df.empty:
+            st.info("暂无 Provider 任务/调用数据。")
+        else:
+            disp_prov = prov_df.copy()
+            for col in ("failure_rate", "empty_rate", "retryable_rate",
+                        "recent_failure_rate"):
+                if col in disp_prov.columns:
+                    disp_prov[col] = disp_prov[col].apply(
+                        lambda x: f"{x:.1%}" if pd.notna(x) else "--")
+            disp_prov = disp_prov.rename(columns={
+                "provider": "Provider", "total_tasks": "总任务",
+                "success_tasks": "成功", "failed_tasks": "失败",
+                "empty_tasks": "空结果", "retryable_tasks": "可重试",
+                "failure_rate": "失败率", "empty_rate": "空率",
+                "retryable_rate": "可重试率",
+                "recent_failure_rate": "最近失败率",
+                "health_status": "健康状态", "suggested_action": "建议动作",
+            })
+            st.dataframe(disp_prov, use_container_width=True, height=240,
+                         key="df_qd_provider", selection_mode="single-row",
+                         on_select="ignore")
+
+    # ── Batch 执行健康区域 ───────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("Batch 执行健康度")
+        bat_row = pd.DataFrame([{
+            "total_batches": bat_summary.get("total_batches", 0),
+            "success_batches": bat_summary.get("success_batches", 0),
+            "failed_batches": bat_summary.get("failed_batches", 0),
+            "partial_batches": bat_summary.get("partial_batches", 0),
+            "latest_batch_id": bat_summary.get("latest_batch_id") or "-",
+            "latest_batch_status": bat_summary.get("latest_batch_status") or "-",
+            "avg_failure_rate": _rate(bat_summary.get("avg_failure_rate")),
+            "retryable_tasks": bat_summary.get("retryable_tasks", 0),
+            "health_status": bat_summary.get("health_status_cn", "未知"),
+        }])
+        bat_row = bat_row.rename(columns={
+            "total_batches": "批次总数", "success_batches": "成功批次",
+            "failed_batches": "失败批次", "partial_batches": "部分成功",
+            "latest_batch_id": "最新批次ID", "latest_batch_status": "最新批次状态",
+            "avg_failure_rate": "平均失败率", "retryable_tasks": "可重试任务",
+            "health_status": "健康状态",
+        })
+        st.dataframe(bat_row, use_container_width=True, height=80,
+                     key="df_qd_batch", hide_index=True,
+                     selection_mode="single-row", on_select="ignore")
+        st.caption(
+            "如需查看失败任务明细，请切换到「补数批次」tab。本总控台不执行任何补数操作。"
+        )
+
+    # ── 存储健康区域 ──────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("存储健康度")
+        sto_df = load_storage_table()
+        disp_sto = sto_df.copy()
+        if "total_size_mb" in disp_sto.columns:
+            disp_sto["total_size_mb"] = disp_sto["total_size_mb"].apply(
+                lambda x: f"{x:.2f}" if pd.notna(x) else "--")
+        disp_sto = disp_sto.rename(columns={
+            "storage_type": "类型", "object_name": "对象",
+            "row_count": "行数", "file_count": "文件数",
+            "total_size_mb": "大小(MB)", "min_date": "最早日期",
+            "max_date": "最晚日期", "last_modified": "最近修改",
+            "health_status": "健康状态", "issue_summary": "问题摘要",
+        })
+        st.dataframe(disp_sto, use_container_width=True, height=320,
+                     key="df_qd_storage", selection_mode="single-row",
+                     on_select="ignore")
+
+    # ── Top Issues & Suggested Actions ───────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    co_left, co_right = st.columns([1, 1])
+    with co_left:
+        with st.container(border=True):
+            st.caption("Top Issues")
+            issues = overview_cn.get("top_issues", []) or []
+            if not issues:
+                st.markdown("_暂无重要问题_")
+            else:
+                for i, msg in enumerate(issues, 1):
+                    st.markdown(f"{i}. {msg}")
+    with co_right:
+        with st.container(border=True):
+            st.caption("Suggested Next Actions")
+            actions = overview_cn.get("suggested_next_actions", []) or []
+            if not actions:
+                st.markdown("_暂无建议_")
+            else:
+                for i, a in enumerate(actions, 1):
+                    st.markdown(f"{i}. {a}")
+
+    # ── 导出功能区 ────────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("导出 CSV（仅下载，不触发任何写库/扫描动作）")
+        ec1, ec2, ec3, ec4 = st.columns(4)
+        overview_csv_df = pd.DataFrame([overview_cn])
+        cov_export_df = load_coverage_table()
+        prov_export_df = load_provider_table()
+        sto_export_df = load_storage_table()
+        with ec1:
+            st.download_button(
+                "导出 quality_overview.csv",
+                data=to_csv_bytes(overview_csv_df),
+                file_name="quality_overview.csv",
+                mime="text/csv", use_container_width=True,
+            )
+        with ec2:
+            st.download_button(
+                "导出 coverage_summary.csv",
+                data=to_csv_bytes(cov_export_df),
+                file_name="coverage_summary.csv",
+                mime="text/csv", use_container_width=True,
+                disabled=cov_export_df.empty,
+            )
+        with ec3:
+            st.download_button(
+                "导出 provider_health.csv",
+                data=to_csv_bytes(prov_export_df),
+                file_name="provider_health.csv",
+                mime="text/csv", use_container_width=True,
+                disabled=prov_export_df.empty,
+            )
+        with ec4:
+            st.download_button(
+                "导出 storage_health.csv",
+                data=to_csv_bytes(sto_export_df),
+                file_name="storage_health.csv",
+                mime="text/csv", use_container_width=True,
+                disabled=sto_export_df.empty,
+            )
+
+    # ── 命令参考 ──────────────────────────────────────────────────────────
+    with st.expander("命令行参考"):
+        st.code(
+            "# 覆盖率扫描预检（请命令行；UI 只读，不在这里执行）\n"
+            "python -m src.data_quality.coverage_scanner --universe core_50 --adj all --dry-run\n\n"
+            "# 真实同步交易日历 / security_master 前，请离开本页面后在命令行手动评估风险\n\n"
+            "# 查看批次失败明细，请切换到补数批次 tab",
+            language="bash",
+        )
+        st.markdown(
+            "<span style='font-size:0.78rem;color:#c8a96b;'>"
+            "⚠ 本页面不会真实补数，也不发起任何扫描/写库动作。建议动作均为提示文本，请在命令行手动评估后执行。"
+            "</span>",
+            unsafe_allow_html=True,
         )
 
 # ======================================================================
