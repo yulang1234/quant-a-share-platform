@@ -1,0 +1,165 @@
+"""V1.5.0 daily decision card — integrates market/sentiment/sector/rules.
+
+Pure, read-only orchestrator. No writes, no network, no auto-backfill.
+Each sub-builder is wrapped in try/except so a failure in one module
+never blanks out the whole card; the affected section is filled with
+``unknown`` / ``None`` / ``[]`` and an issue is recorded.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
+from datetime import datetime
+from typing import Any
+
+from src.data_quality.quality_dashboard import HEALTH_UNKNOWN
+from src.market.market_state import build_market_snapshot, MARKET_UNKNOWN
+from src.sentiment.sentiment_cycle import (
+    build_sentiment_snapshot, SENTIMENT_UNKNOWN,
+)
+from src.sector.sector_snapshot import build_sector_snapshot
+from src.rules.basic_decision_rules import (
+    decide_overall_bias, build_risk_warnings, build_suggested_actions,
+    build_observation_conditions, build_invalidation_conditions,
+    OVERALL_UNKNOWN, OVERALL_DEFENSIVE,
+)
+
+
+@dataclass
+class DailyDecisionCard:
+    """The structured 'today decision card' (V1.5.0 skeleton)."""
+
+    trade_date: str | None
+    overall_bias: str
+    market_state: str
+    sentiment_cycle: str
+    risk_level: str
+    strong_sectors: list[dict[str, Any]] = field(default_factory=list)
+    risk_warnings: list[str] = field(default_factory=list)
+    suggested_actions: list[str] = field(default_factory=list)
+    observation_conditions: list[str] = field(default_factory=list)
+    invalidation_conditions: list[str] = field(default_factory=list)
+    data_quality_status: str = HEALTH_UNKNOWN
+    generated_at: str = ""
+    issue_summary: list[str] = field(default_factory=list)
+    # Sub-snapshots (kept for the UI / Markdown renderer).
+    market_snapshot: dict[str, Any] = field(default_factory=dict)
+    sentiment_snapshot: dict[str, Any] = field(default_factory=dict)
+    sector_snapshot: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _safe_market(trade_date: str | None) -> tuple[Any, str]:
+    """Return (snapshot, error_or_empty)."""
+    try:
+        snap = build_market_snapshot(trade_date)
+        return snap, ""
+    except Exception as exc:  # graceful degradation
+        from src.market.market_state import MarketSnapshot
+        return MarketSnapshot(
+            trade_date=trade_date, market_state=MARKET_UNKNOWN,
+            risk_level="unknown", can_open_position="unknown",
+            can_add_position="unknown", chase_high_allowed="unknown",
+            action_hint="数据不足，建议仅观察",
+        ), f"market_state 构建失败：{type(exc).__name__}"
+
+
+def _safe_sentiment(trade_date: str | None) -> tuple[Any, str]:
+    try:
+        snap = build_sentiment_snapshot(trade_date)
+        return snap, ""
+    except Exception as exc:
+        from src.sentiment.sentiment_cycle import SentimentSnapshot
+        return SentimentSnapshot(
+            trade_date=trade_date, sentiment_cycle=SENTIMENT_UNKNOWN,
+        ), f"sentiment_cycle 构建失败：{type(exc).__name__}"
+
+
+def _safe_sector(trade_date: str | None) -> tuple[dict[str, Any], str]:
+    try:
+        snap = build_sector_snapshot(trade_date)
+        return snap, ""
+    except Exception as exc:
+        return {
+            "trade_date": trade_date, "sectors": [],
+            "data_quality_status": HEALTH_UNKNOWN,
+            "issue_summary": [f"sector_snapshot 构建失败：{type(exc).__name__}"],
+        }, f"sector_snapshot 构建失败：{type(exc).__name__}"
+
+
+def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCard:
+    """Build the integrated daily decision card.
+
+    * Resolves trade_date via market_state (which falls back to today).
+    * Builds market / sentiment / sector sub-snapshots (each graceful).
+    * Calls the rules layer for overall_bias + four textual outputs.
+    * Returns a card with stable schema even when all data is unknown.
+    """
+    market_snap, m_err = _safe_market(trade_date)
+    td = market_snap.trade_date
+
+    sentiment_snap, s_err = _safe_sentiment(td)
+    sector_snap, sec_err = _safe_sector(td)
+
+    market_state = market_snap.market_state
+    sentiment_cycle = sentiment_snap.sentiment_cycle
+    sector_count = len(sector_snap.get("sectors") or [])
+    data_quality_status = (
+        market_snap.data_quality_status
+        or sector_snap.get("data_quality_status")
+        or sentiment_snap.data_quality_status
+        or HEALTH_UNKNOWN
+    )
+    risk_level = market_snap.risk_level
+
+    overall_bias = decide_overall_bias(
+        market_state, sentiment_cycle, sector_count, data_quality_status,
+    )
+    risk_warnings = build_risk_warnings(
+        market_state, sentiment_cycle, sector_count, data_quality_status,
+    )
+    suggested_actions = build_suggested_actions(
+        market_state, sentiment_cycle, sector_count, data_quality_status,
+    )
+    observation_conditions = build_observation_conditions(
+        market_state, sentiment_cycle, sector_count, data_quality_status,
+    )
+    invalidation_conditions = build_invalidation_conditions(
+        market_state, sentiment_cycle, sector_count, data_quality_status,
+    )
+
+    # Issue summary — gather sub-module issues + errors.
+    issues: list[str] = []
+    if m_err:
+        issues.append(m_err)
+    if s_err:
+        issues.append(s_err)
+    if sec_err:
+        issues.append(sec_err)
+    issues.extend(market_snap.issue_summary or [])
+    issues.extend(sector_snap.get("issue_summary") or [])
+    if not issues:
+        issues.append("V1.5.0 骨架版本：市场/情绪/板块判断口径待后续版本完善")
+
+    # Serialise sectors to dict for downstream Markdown/UI.
+    sector_dicts = [r.as_dict() for r in (sector_snap.get("sectors") or [])]
+
+    return DailyDecisionCard(
+        trade_date=td,
+        overall_bias=overall_bias,
+        market_state=market_state,
+        sentiment_cycle=sentiment_cycle,
+        risk_level=risk_level,
+        strong_sectors=sector_dicts,
+        risk_warnings=risk_warnings,
+        suggested_actions=suggested_actions,
+        observation_conditions=observation_conditions,
+        invalidation_conditions=invalidation_conditions,
+        data_quality_status=data_quality_status,
+        generated_at=datetime.now().isoformat(timespec="seconds"),
+        issue_summary=issues,
+        market_snapshot=market_snap.as_dict(),
+        sentiment_snapshot=sentiment_snap.as_dict(),
+        sector_snapshot=sector_snap,
+    )

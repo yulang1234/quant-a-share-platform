@@ -505,8 +505,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "数据质量总控", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源", "补数批次"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_quality_dashboard, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers, t_backfill = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "今日决策", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "数据质量总控", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源", "补数批次"]
+t_overview, t_decision, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_quality_dashboard, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers, t_backfill = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -698,6 +698,93 @@ with t_overview:
                     '无法加载日志</div>',
                     unsafe_allow_html=True,
                 )
+
+
+# ======================================================================
+#  TAB: 今日决策 (V1.5.0)
+# ======================================================================
+
+with t_decision:
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>"
+        "V1.5.0 今日决策卡 -- 最小投研决策闭环骨架。"
+        "本页面只读展示，不执行交易、不自动补数、不联网；内容不构成投资建议。"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    from ui.components.daily_decision_view import (
+        load_daily_decision_card,
+        overview_metrics as decision_metrics,
+        render_card_markdown,
+        sectors_to_df,
+        to_markdown_bytes,
+    )
+
+    card = load_daily_decision_card()
+    dm = decision_metrics(card)
+    md = render_card_markdown(card)
+
+    d1, d2, d3, d4, d5 = st.columns(5)
+    d1.metric("交易日期", dm["trade_date"])
+    d2.metric("整体倾向", dm["overall_bias_cn"])
+    d3.metric("市场状态", dm["market_state_cn"])
+    d4.metric("情绪阶段", dm["sentiment_cycle_cn"])
+    d5.metric("风险等级", dm["risk_level_cn"])
+
+    d6, d7, d8 = st.columns(3)
+    d6.metric("数据质量", dm["data_quality_status_cn"])
+    d7.metric("强势板块数", dm["strong_sector_count"])
+    d8.metric("生成时间", dm["generated_at"] or "unknown")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.caption("强势板块")
+        sec_df = sectors_to_df(card)
+        if sec_df.empty:
+            st.info("暂无强势板块数据。V1.5.0 不虚构板块，不输出板块方向建议。")
+        else:
+            st.dataframe(
+                sec_df,
+                use_container_width=True,
+                height=220,
+                key="df_daily_decision_sectors",
+                selection_mode="single-row",
+                on_select="ignore",
+            )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    c_left, c_right = st.columns(2)
+    with c_left:
+        with st.container(border=True):
+            st.caption("风险提示")
+            for item in card.get("risk_warnings") or ["暂无数据"]:
+                st.markdown(f"- {item}")
+    with c_right:
+        with st.container(border=True):
+            st.caption("建议动作")
+            for item in card.get("suggested_actions") or ["暂无数据"]:
+                st.markdown(f"- {item}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("Markdown 今日决策卡")
+        st.download_button(
+            "下载 Markdown",
+            data=to_markdown_bytes(card),
+            file_name=f"daily_decision_card_{dm['trade_date']}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+        st.code(md, language="markdown")
+
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#c8a96b;margin-top:0.8rem;'>"
+        "本报告仅用于个人投研辅助和系统测试，不构成任何投资建议，不构成买卖依据。"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 # ======================================================================
 #  TAB: 股票池
