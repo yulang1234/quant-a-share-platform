@@ -389,6 +389,66 @@ _ISSUE_TYPE_CN = {
 }
 _ISSUE_LEVEL_CN = {"high": "高", "medium": "中", "low": "低"}
 
+# V1.4.9 — Backfill Batch governance column translations
+_BATCH_CN = {
+    "batch_id": "批次ID",
+    "created_at": "创建时间",
+    "universe_name": "股票范围",
+    "status": "批次状态",
+    "total_tasks": "任务总数",
+    "success_tasks": "成功",
+    "failed_tasks": "失败",
+    "empty_tasks": "空结果",
+    "retryable_tasks": "可重试",
+    "coverage_before": "补前覆盖",
+    "coverage_after": "补后覆盖",
+    "coverage_delta": "覆盖提升",
+    "provider": "Provider",
+    "duration_seconds": "耗时(秒)",
+    "report_path": "报告路径",
+    "task_id": "任务ID",
+    "symbol": "股票代码",
+    "ts_code": "代码.交易所",
+    "trade_date_start": "开始日期",
+    "trade_date_end": "结束日期",
+    "data_type": "数据类型",
+    "adj_type": "复权类型",
+    "error_type": "错误类型",
+    "error_category": "错误分类",
+    "error_message": "错误信息",
+    "retryable": "可重试",
+    "retry_reason": "重试原因",
+    "attempt_count": "已重试",
+    "max_attempts": "最大重试",
+    "suggested_retry_command": "建议命令",
+    "total_calls": "调用数",
+    "success_calls": "成功调用",
+}
+_BATCH_STATUS_CN = {
+    "pending": "待处理", "running": "执行中", "success": "成功",
+    "failed": "失败", "partial_success": "部分成功",
+    "planned": "已规划", "tasks_written": "已写入任务",
+    "empty": "空结果", "skipped": "跳过",
+    "retryable": "可重试", "non_retryable": "不可重试",
+}
+
+
+def fmt_batch(df: pd.DataFrame) -> pd.DataFrame:
+    d = df.copy()
+    if "status" in d.columns:
+        d["status"] = d["status"].map(_BATCH_STATUS_CN).fillna(d["status"])
+    return d.rename(columns={k: v for k, v in _BATCH_CN.items() if k in d.columns})
+
+
+def fmt_batch_task(df: pd.DataFrame) -> pd.DataFrame:
+    """Chinese-ify and translate retryable / status for the failed-tasks table."""
+    d = df.copy()
+    if "status" in d.columns:
+        d["status"] = d["status"].map(_BATCH_STATUS_CN).fillna(d["status"])
+    if "retryable" in d.columns:
+        d["retryable"] = d["retryable"].map({True: "可重试", False: "不可重试"}).fillna(d["retryable"])
+    return d.rename(columns={k: v for k, v in _BATCH_CN.items() if k in d.columns})
+
 
 def fmt_cols(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={k: v for k, v in _COL_CN.items() if k in df.columns})
@@ -445,8 +505,8 @@ st.markdown(
 #  Tabs
 # ======================================================================
 
-TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源"]
-t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers = st.tabs(TAB_NAMES)
+TAB_NAMES = ["总览", "股票池", "数据初始化", "增量更新", "过滤结果", "数据质量", "数据修复", "基础因子", "因子排名", "因子有效性", "TopK选股", "基础回测", "回测评价体系", "多因子评分", "命令手册", "风险提示", "数据源", "补数批次"]
+t_overview, t_pool, t_hist, t_daily, t_filter, t_quality, t_repair, t_factors, t_ranks, t_analysis, t_topk, t_backtest, t_backtest_eval, t_scoring, t_commands, t_disclaimer, t_providers, t_backfill = st.tabs(TAB_NAMES)
 
 # ======================================================================
 #  TAB: 总览
@@ -1646,3 +1706,225 @@ with t_providers:
             for t in tips: st.markdown(f"* {t}")
         else:
             st.markdown("* 所有 Provider 状态正常")
+
+
+# ======================================================================
+#  TAB: 补数批次 (V1.4.9)
+# ======================================================================
+
+with t_backfill:
+    st.markdown(
+        "<div style='font-size:0.78rem;color:#5a6a8a;margin-bottom:0.8rem;'>"
+        "V1.4.9 Backfill Batch 失败任务治理 -- 本页面仅用于查看、分析、导出和复制重试建议，"
+        "不直接执行真实补数。所有重试命令默认 dry-run，需在命令行手动确认。</div>",
+        unsafe_allow_html=True,
+    )
+
+    from ui.components.backfill_batch_view import (
+        load_batches, load_failed_tasks, load_provider_failure,
+        overview_metrics, to_csv_bytes, batch_suggested_command,
+        BATCH_COLUMNS, FAILED_TASK_COLUMNS, PROVIDER_COLUMNS,
+    )
+
+    # ── 筛选区 ─────────────────────────────────────────────────────────
+    with st.container(border=True):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            f_batch_id = st.text_input("批次ID", placeholder="精确匹配", key="bbf_bid")
+            f_universe = st.text_input("股票范围", placeholder="core_50/100/500", key="bbf_uni")
+        with c2:
+            f_status = st.selectbox("批次状态", ["", "planned", "tasks_written", "running",
+                                               "success", "partial_success", "failed"],
+                                    format_func=lambda x: _BATCH_STATUS_CN.get(x, x or "全部"),
+                                    key="bbf_status")
+            f_provider = st.text_input("Batch Provider", placeholder="akshare/tushare", key="bbf_prov")
+        with c3:
+            f_task_status = st.selectbox("任务状态", ["", "failed", "empty"],
+                                          format_func=lambda x: _BATCH_STATUS_CN.get(x, x or "全部"),
+                                          key="bbf_tstatus")
+            f_adj = st.selectbox("复权类型", ["", "raw", "qfq"],
+                                 format_func=lambda x: {"raw": "不复权", "qfq": "前复权"}.get(x, x or "全部"),
+                                 key="bbf_adj")
+        with c4:
+            f_retry_only = st.checkbox("仅可重试任务", value=False, key="bbf_retry")
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                f_date_from = st.date_input("创建起", value=None, key="bbf_dfrom")
+            with col_d2:
+                f_date_to = st.date_input("创建止", value=None, key="bbf_dto")
+
+    # ── 数据加载 ────────────────────────────────────────────────────────
+    batches_df = load_batches(
+        limit=200,
+        universe_name=f_universe.strip() or None,
+        status=f_status or None,
+        provider=f_provider.strip() or None,
+        created_from=str(f_date_from) if f_date_from else None,
+        created_to=str(f_date_to) if f_date_to else None,
+    )
+    batch_ids = list(batches_df["batch_id"]) if not batches_df.empty and "batch_id" in batches_df else []
+
+    # ── 总览指标卡 ──────────────────────────────────────────────────────
+    m = overview_metrics(batches_df)
+
+    def _fmt_rate(r):
+        return f"{r:.1%}" if r is not None else "--"
+    def _fmt_delta(d):
+        sign = "+" if (d is not None and d >= 0) else ""
+        return f"{sign}{d:.2%}" if d is not None else "--"
+
+    m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
+    m1.metric("批次总数", m["batch_count"])
+    m2.metric("任务总数", m["total_tasks"])
+    m3.metric("成功", m["success_tasks"])
+    m4.metric("失败", m["failed_tasks"])
+    m5.metric("空结果", m["empty_tasks"])
+    m6.metric("可重试", m["retryable_tasks"])
+    m7.metric("平均失败率", _fmt_rate(m["avg_failure_rate"]))
+    m8.metric("平均覆盖提升", _fmt_delta(m["avg_coverage_delta"]))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Batch 列表 ──────────────────────────────────────────────────────
+    with st.container(border=True):
+        st.caption("Batch 列表")
+        if batches_df.empty:
+            st.info("暂无批次记录。筛选条件无匹配。")
+        else:
+            # Format numeric coverage columns for readability
+            raw_disp = batches_df.copy()
+            for col, fmt in (("coverage_before", "{:.2%}"), ("coverage_after", "{:.2%}"),
+                             ("coverage_delta", "{:+.2%}")):
+                if col in raw_disp.columns:
+                    raw_disp[col] = raw_disp[col].apply(lambda x: fmt.format(x) if pd.notna(x) else "--")
+            if "duration_seconds" in raw_disp.columns:
+                raw_disp["duration_seconds"] = raw_disp["duration_seconds"].apply(
+                    lambda x: f"{x:.0f}" if pd.notna(x) else "--")
+            disp = fmt_batch(raw_disp)
+            st.dataframe(disp, use_container_width=True, height=320,
+                         key="df_backfill_batches", selection_mode="single-row",
+                         on_select="ignore")
+
+    # ── Provider 失败率表 ────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("Provider 失败率")
+        # Provider stats apply to the currently visible batches; optional
+        # batch_id narrowing from the filter box.
+        pv_ids = (
+            [f_batch_id.strip()] if f_batch_id.strip()
+            else batch_ids
+        )
+        prov_df = load_provider_failure(pv_ids)
+        if prov_df.empty:
+            st.info("暂无 Provider 调用日志数据。")
+        else:
+            disp_p = prov_df.copy()
+            for col, fmt in (("failure_rate", "{:.1%}"), ("empty_rate", "{:.1%}"),
+                             ("retryable_rate", "{:.1%}")):
+                if col in disp_p.columns:
+                    disp_p[col] = disp_p[col].apply(lambda x: fmt.format(x) if pd.notna(x) else "--")
+            disp_p = disp_p.rename(columns={k: v for k, v in _BATCH_CN.items() if k in disp_p.columns})
+            st.dataframe(disp_p, use_container_width=True, height=240,
+                         key="df_backfill_providers", selection_mode="single-row",
+                         on_select="ignore")
+
+    # ── 明细 (单 batch 选择) ────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("失败 / 空 / 可重试任务明细")
+        if batches_df.empty and not f_batch_id.strip():
+            st.info("请先选择批次或填写批次ID。")
+        else:
+            sel_batch = f_batch_id.strip() or (
+                st.selectbox("选择批次", batch_ids, key="bbf_sel") if batch_ids else None
+            )
+            if sel_batch:
+                tasks_df = load_failed_tasks(
+                    batch_id=sel_batch,
+                    status=f_task_status or None,
+                    provider=f_provider.strip() or None,
+                    adj_type=f_adj or None,
+                    retryable_only=f_retry_only,
+                )
+                if tasks_df.empty:
+                    st.info("该批次无失败/空任务。")
+                else:
+                    disp_t = fmt_batch_task(tasks_df.copy())
+                    st.dataframe(disp_t, use_container_width=True, height=380,
+                                 key="df_backfill_tasks", selection_mode="single-row",
+                                 on_select="ignore")
+                    st.caption(f"明细行数: {len(disp_t)}")
+
+                    # ── 建议重试命令（仅 retryable 任务） ─────────────────
+                    retry_rows = tasks_df[tasks_df["retryable"] == True] if "retryable" in tasks_df.columns else tasks_df
+                    if not retry_rows.empty:
+                        with st.expander(f"建议重试命令（{len(retry_rows)} 个可重试任务）", expanded=False):
+                            st.markdown(
+                                "<span style='font-size:0.74rem;color:#5a6a8a;'>"
+                                "以下为建议复制执行命令，默认 dry-run，不会自动执行。"
+                                "</span>",
+                                unsafe_allow_html=True,
+                            )
+                            cmd = batch_suggested_command(sel_batch)
+                            st.code(cmd, language="bash")
+                            st.caption("确认运行前请在命令行手动加 `--confirm` 并评估风险。")
+
+    # ── 导出功能区 ──────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.caption("导出 CSV")
+        export_batch = f_batch_id.strip() or (batch_ids[0] if batch_ids else None)
+        export_tasks = load_failed_tasks(batch_id=export_batch) if export_batch else pd.DataFrame()
+        export_retry = (
+            export_tasks[export_tasks["retryable"] == True]
+            if (not export_tasks.empty and "retryable" in export_tasks.columns)
+            else pd.DataFrame()
+        )
+        ec1, ec2, ec3 = st.columns(3)
+        with ec1:
+            st.download_button(
+                "导出 失败/空任务 CSV",
+                data=to_csv_bytes(export_tasks),
+                file_name=f"failed_tasks_{export_batch or 'all'}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                disabled=export_tasks.empty,
+            )
+        with ec2:
+            st.download_button(
+                "导出 可重试任务 CSV",
+                data=to_csv_bytes(export_retry),
+                file_name=f"retryable_tasks_{export_batch or 'all'}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                disabled=export_retry.empty,
+            )
+        with ec3:
+            st.download_button(
+                "导出 Provider 失败率 CSV",
+                data=to_csv_bytes(prov_df),
+                file_name=f"provider_failure_{export_batch or 'all'}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                disabled=prov_df.empty,
+            )
+
+    # ── 命令参考 ────────────────────────────────────────────────────────
+    with st.expander("命令行参考"):
+        st.code(
+            "# 读取单个批次报告（只读）\n"
+            "python -m src.backfill.batch_report --batch-id <batch_id>\n\n"
+            "# 建议重试命令（默认 dry-run）\n"
+            "python -m src.backfill.batch_runner --batch-id <batch_id> --status retryable "
+            "--limit 10 --dry-run --no-save --allow-core-500-run\n\n"
+            "# 失败任务治理 CLI（只读）\n"
+            "python -m src.backfill.batch_failure --batch-id <batch_id> --retryable-only",
+            language="bash",
+        )
+        st.markdown(
+            "<span style='font-size:0.78rem;color:#c8a96b;'>"
+            "⚠ 本页面不会真实执行补数。任何真实补数请通过命令行并加 --confirm / "
+            "--allow-core-500-run / 必要时 --save-local。</span>",
+            unsafe_allow_html=True,
+        )
