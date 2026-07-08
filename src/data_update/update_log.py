@@ -126,7 +126,7 @@ def get_failed_tasks(
                    error_message, started_at, finished_at,
                    ROW_NUMBER() OVER (
                        PARTITION BY stock_code, adj_type
-                       ORDER BY finished_at DESC
+                       ORDER BY finished_at DESC, id DESC
                    ) AS rn
             FROM data_update_log
             WHERE task_type = ?
@@ -148,7 +148,7 @@ def get_failed_tasks(
             AND fo.adj_type = hls.adj_type
         WHERE fo.rn = 1
           AND hls.stock_code IS NULL
-        ORDER BY fo.finished_at DESC
+        ORDER BY fo.finished_at DESC, fo.id DESC
     """
     params: list[Any] = [task_type, task_type]
     if limit is not None:

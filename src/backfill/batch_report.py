@@ -1,4 +1,4 @@
-"""V1.4.7 Batch Report — comprehensive report for a single batch.
+"""V1.4.8 Batch Report — comprehensive report for a single batch.
 
 Usage::
 
@@ -11,40 +11,81 @@ import sys
 from typing import Any
 
 
-def _next_suggested_action(batch_info: dict[str, Any],
-                           before_snap: dict | None,
-                           after_snap: dict | None) -> str:
-    """Suggest next action based on batch state."""
-    status = batch_info.get("status", "")
+def _compute_counts(batch_id: str) -> dict[str, int]:
+    """Compute task counts by status, including retryable."""
+    counts = {"pending": 0, "running": 0, "success": 0, "failed": 0,
+              "empty": 0, "skipped": 0, "retryable": 0, "non_retryable": 0}
+    try:
+        from src.data_tasks.task_repo import DataLoadTaskRepository
+        from src.repositories.meta_db import get_session
+        from src.db.schema_meta import DataLoadTask
+        from sqlalchemy import func
+        s = get_session()
+        for st in ("pending", "running", "success", "failed", "empty", "skipped"):
+            cnt = s.query(func.count()).filter(
+                DataLoadTask.batch_id == batch_id,
+                DataLoadTask.status == st,
+            ).scalar() or 0
+            counts[st] = int(cnt)
+        # Compute retryable / non-retryable from failed
+        failed_tasks = s.query(DataLoadTask).filter(
+            DataLoadTask.batch_id == batch_id,
+            DataLoadTask.status == "failed",
+        ).all()
+        counts["retryable"] = sum(1 for t in failed_tasks if (t.attempt_count or 0) < (t.max_attempts or 5))
+        counts["non_retryable"] = len(failed_tasks) - counts["retryable"]
+    except Exception:
+        pass
+    return counts
+
+
+def _suggested_retry_command(batch_id: str, save_local: bool = False) -> str:
+    save = "--save-local" if save_local else "--no-save"
+    return (
+        f"python -m src.backfill.batch_runner --batch-id {batch_id} "
+        f"--status retryable --limit 10 --confirm {save} --allow-core-500-run"
+    )
+
+
+def _risk_warnings(batch_info: dict[str, Any], before_snap, after_snap) -> list[str]:
+    """Generate risk warnings based on batch state."""
+    warnings = []
+
+    is_real = True
+    if after_snap and hasattr(after_snap, 'is_real_calendar'):
+        is_real = after_snap.is_real_calendar
+    elif before_snap and hasattr(before_snap, 'is_real_calendar'):
+        is_real = before_snap.is_real_calendar
+
+    if not is_real:
+        warnings.append("Calendar is not real — sync trading calendar first.")
+
     failed = batch_info.get("failed_count", 0) or 0
     success = batch_info.get("success_count", 0) or 0
     empty = batch_info.get("empty_count", 0) or 0
+    total = failed + success + empty
 
     if failed > 0 and success == 0:
-        return "Check task_stats for failure details, then retry failed tasks."
-    if failed > 0:
-        return "Some tasks failed. Run batch_runner --status failed to retry."
-    if empty > 0:
-        return "Some tasks returned empty. Check Provider or stock code mapping."
-    if status == "tasks_written" or status == "planned":
-        return f"Tasks are ready. Run: python -m src.backfill.batch_runner --batch-id {batch_info.get('batch_id', '?')} --limit 20 --confirm --no-save"
-    if status == "partial_success":
-        return "Batch partially complete. Run batch_runner with remaining tasks."
-    if status == "success":
-        return "Batch complete. Proceed to next batch or expand date range."
+        warnings.append("All tasks failed — stop and investigate Provider before continuing.")
+    if total > 0:
+        rate = failed / total
+        if rate > 0.3:
+            warnings.append(f"Failed rate {rate:.1%} > 30% — reduce limit, increase sleep.")
+    if empty > 0 and total > 0:
+        erate = empty / total
+        if erate > 0.5:
+            warnings.append("High empty rate — check Provider and stock code mapping.")
 
     if not batch_info.get("is_real_calendar", True):
-        return "Sync real trading calendar first: python -m src.trading_calendar.sync_trading_calendar --confirm"
+        warnings.append("Fallback calendar detected. Coverage may be inaccurate.")
 
-    return "Review batch and decide next step."
+    return warnings
 
 
 def main() -> int:
     import argparse
-    p = argparse.ArgumentParser(
-        description="V1.4.7 Batch Report — detailed report for a batch",
-    )
-    p.add_argument("--batch-id", required=True, help="Batch ID")
+    p = argparse.ArgumentParser(description="V1.4.8 Batch Report")
+    p.add_argument("--batch-id", required=True)
     args = p.parse_args()
 
     from src.backfill.batch_repo import BatchRepository
@@ -67,13 +108,20 @@ def main() -> int:
         if br is not None and ar is not None:
             coverage_delta = ar - br
 
-    # Provider stats
-    provider_success_rate = None
-    provider_failed_rate = None
-    total_executed = (batch.success_count or 0) + (batch.failed_count or 0) + (batch.empty_count or 0)
-    if total_executed > 0:
-        provider_success_rate = (batch.success_count or 0) / total_executed
-        provider_failed_rate = (batch.failed_count or 0) / total_executed
+    # Task counts
+    counts = _compute_counts(args.batch_id)
+    total_executed = counts.get("success", 0) + counts.get("failed", 0) + counts.get("empty", 0)
+    provider_success_rate = (counts["success"] / total_executed) if total_executed > 0 else None
+    provider_failed_rate = (counts["failed"] / total_executed) if total_executed > 0 else None
+
+    # Risk warnings
+    batch_info = {
+        "batch_id": batch.batch_id, "status": batch.status,
+        "success_count": batch.success_count, "failed_count": batch.failed_count,
+        "empty_count": batch.empty_count,
+        "is_real_calendar": after_snap.is_real_calendar if after_snap else (before_snap.is_real_calendar if before_snap else True),
+    }
+    risks = _risk_warnings(batch_info, before_snap, after_snap)
 
     # ── Output ─────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
@@ -85,23 +133,24 @@ def main() -> int:
     print(f"  Adj type          : {batch.adj_type}")
     print(f"  Date range        : {batch.start_date} ~ {batch.end_date}")
     print(f"  Status            : {batch.status}")
-    print(f"  Planned tasks     : {batch.planned_task_count}")
-    print(f"  Written tasks     : {batch.written_task_count}")
-    print(f"  Executed tasks    : {total_executed}")
-    print(f"  Success           : {batch.success_count}")
-    print(f"  Failed            : {batch.failed_count}")
-    print(f"  Empty             : {batch.empty_count}")
-    print(f"  Skipped           : {batch.skipped_count}")
+    print(f"  Max limit         : {batch.max_limit}")
+    print(f"  Sleep seconds     : {batch.sleep_seconds}")
+    print(f"  Save local        : {batch.save_local}")
+
+    print(f"\n  --- Task Counts ---")
+    for st in ["pending", "running", "success", "failed", "empty", "skipped"]:
+        print(f"  {st:<18}: {counts.get(st, 0):>6}")
+    print(f"  retryable         : {counts.get('retryable', 0):>6}")
+    print(f"  non-retryable     : {counts.get('non_retryable', 0):>6}")
+    print(f"  total_executed    : {total_executed:>6}")
 
     # Before snapshot
     if before_snap:
         print(f"\n  --- Before Snapshot ---")
-        print(f"  Snapshot ID       : {before_snap.snapshot_id}")
-        print(f"  Stocks scanned    : {before_snap.stock_count}")
-        print(f"  Complete/Partial  : {before_snap.complete_count}/{before_snap.partial_count}")
-        print(f"  Avg coverage      : {before_snap.avg_coverage_rate}")
-        print(f"  Calendar source   : {before_snap.calendar_source}")
-        print(f"  Is real calendar  : {before_snap.is_real_calendar}")
+        print(f"  ID: {before_snap.snapshot_id}  stocks: {before_snap.stock_count}  "
+              f"complete: {before_snap.complete_count}  partial: {before_snap.partial_count}")
+        print(f"  Avg coverage: {before_snap.avg_coverage_rate}  "
+              f"real_calendar: {before_snap.is_real_calendar}")
     else:
         print(f"\n  --- Before Snapshot ---")
         print(f"  (none)")
@@ -109,11 +158,10 @@ def main() -> int:
     # After snapshot
     if after_snap:
         print(f"\n  --- After Snapshot ---")
-        print(f"  Snapshot ID       : {after_snap.snapshot_id}")
-        print(f"  Stocks scanned    : {after_snap.stock_count}")
-        print(f"  Complete/Partial  : {after_snap.complete_count}/{after_snap.partial_count}")
-        print(f"  Avg coverage      : {after_snap.avg_coverage_rate}")
-        print(f"  Calendar source   : {after_snap.calendar_source}")
+        print(f"  ID: {after_snap.snapshot_id}  stocks: {after_snap.stock_count}  "
+              f"complete: {after_snap.complete_count}  partial: {after_snap.partial_count}")
+        print(f"  Avg coverage: {after_snap.avg_coverage_rate}  "
+              f"calendar: {after_snap.calendar_source}")
     else:
         print(f"\n  --- After Snapshot ---")
         print(f"  (none)")
@@ -122,12 +170,10 @@ def main() -> int:
     if coverage_delta is not None:
         sign = "+" if coverage_delta >= 0 else ""
         print(f"\n  Coverage delta    : {sign}{coverage_delta:.4f}")
-    else:
-        print(f"\n  Coverage delta    : N/A")
 
     # Provider rates
     if provider_success_rate is not None:
-        print(f"\n  Provider success  : {provider_success_rate:.1%}")
+        print(f"  Provider success  : {provider_success_rate:.1%}")
     if provider_failed_rate is not None:
         print(f"  Provider failed   : {provider_failed_rate:.1%}")
 
@@ -143,19 +189,24 @@ def main() -> int:
     except Exception:
         pass
 
-    # Suggested action
-    batch_info = {
-        "batch_id": batch.batch_id,
-        "status": batch.status,
-        "success_count": batch.success_count,
-        "failed_count": batch.failed_count,
-        "empty_count": batch.empty_count,
-        "is_real_calendar": after_snap.is_real_calendar if after_snap else (before_snap.is_real_calendar if before_snap else True),
-    }
-    action = _next_suggested_action(batch_info,
-                                     before_snap.__dict__ if before_snap else None,
-                                     after_snap.__dict__ if after_snap else None)
-    print(f"\n  Next action       : {action}")
+    # ── V1.4.8: Suggested commands ────────────────────────────────────
+    save_used = bool(batch.save_local)
+    retry_cmd = _suggested_retry_command(args.batch_id, save_used)
+
+    print(f"\n  --- Suggested Commands ---")
+    if counts.get("pending", 0) > 0:
+        print(f"  Next: python -m src.backfill.batch_runner --batch-id {args.batch_id} "
+              f"--status pending --limit 10 --confirm --no-save --allow-core-500-run")
+    if counts.get("retryable", 0) > 0:
+        print(f"  Retry: {retry_cmd}")
+    if counts.get("failed", 0) > 0:
+        print(f"  Investigate: python -m src.data_tasks.task_stats")
+
+    # ── V1.4.8: Risk warnings ─────────────────────────────────────────
+    if risks:
+        print(f"\n  --- Risk Warnings ---")
+        for r in risks:
+            print(f"  [!] {r}")
 
     print(f"{'='*60}")
     return 0

@@ -64,16 +64,61 @@ class TestBatchReport:
             sys.argv = old_argv
 
     def test_next_suggested_action(self) -> None:
-        from src.backfill.batch_report import _next_suggested_action
+        from src.backfill.batch_report import _suggested_retry_command
+        cmd = _suggested_retry_command("bf_test", save_local=False)
+        assert "retryable" in cmd or "batch_runner" in cmd
+        assert "--no-save" in cmd
 
-        # tasks_written
-        action = _next_suggested_action({"status": "tasks_written", "batch_id": "bf_x"}, None, None)
-        assert "batch_runner" in action
+        cmd2 = _suggested_retry_command("bf_test", save_local=True)
+        assert "--save-local" in cmd2
 
-        # success
-        action = _next_suggested_action({"status": "success", "success_count": 10, "failed_count": 0, "empty_count": 0}, None, None)
-        assert "complete" in action.lower()
+    def test_risk_warnings(self) -> None:
+        from src.backfill.batch_report import _risk_warnings
+        # High failed rate
+        warns = _risk_warnings({"failed_count": 4, "success_count": 0, "empty_count": 0}, None, None)
+        assert len(warns) > 0
 
-        # with failures
-        action = _next_suggested_action({"status": "partial_success", "success_count": 5, "failed_count": 3, "empty_count": 0}, None, None)
-        assert "retry" in action.lower() or "failed" in action.lower()
+        # All good
+        warns2 = _risk_warnings({"failed_count": 0, "success_count": 10, "empty_count": 0}, None, None)
+        assert len(warns2) == 0
+
+    def test_counts_include_retryable(self) -> None:
+        from src.backfill.batch_repo import BatchRepository
+        from src.data_tasks.task_repo import DataLoadTaskRepository
+        repo = BatchRepository()
+        repo.create_batch(batch_id="bf_test_retry", batch_name="R", universe_name="core_50")
+        trepo = DataLoadTaskRepository()
+        trepo.create(symbol="000001", exchange="SZ", data_type="daily_bar",
+                    adj_type="qfq", start_date="20240101", end_date="20240131",
+                    batch_id="bf_test_retry", status="failed",
+                    attempt_count=1, max_attempts=5)
+        trepo.create(symbol="000002", exchange="SZ", data_type="daily_bar",
+                    adj_type="qfq", start_date="20240101", end_date="20240131",
+                    batch_id="bf_test_retry", status="failed",
+                    attempt_count=5, max_attempts=5)
+
+        from src.backfill.batch_report import _compute_counts
+        counts = _compute_counts("bf_test_retry")
+        assert counts["retryable"] == 1
+        assert counts["non_retryable"] == 1
+
+    def test_report_with_failed_shows_retry(self) -> None:
+        from src.backfill.batch_repo import BatchRepository
+        from src.data_tasks.task_repo import DataLoadTaskRepository
+        repo = BatchRepository()
+        repo.create_batch(batch_id="bf_test_frpt", batch_name="F", universe_name="core_50")
+        trepo = DataLoadTaskRepository()
+        trepo.create(symbol="000001", exchange="SZ", data_type="daily_bar",
+                    adj_type="qfq", start_date="20240101", end_date="20240131",
+                    batch_id="bf_test_frpt", status="failed",
+                    attempt_count=1, max_attempts=5)
+
+        from src.backfill.batch_report import main as cli_main
+        import sys
+        old_argv = sys.argv
+        try:
+            sys.argv = ["report", "--batch-id", "bf_test_frpt"]
+            rc = cli_main()
+            assert rc == 0
+        finally:
+            sys.argv = old_argv

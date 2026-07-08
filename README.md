@@ -1,6 +1,68 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.7 core_500 分批补数准备与批次管理
+## 当前版本：V1.4.8 core_500 小规模真实执行与批次恢复增强
+
+V1.4.8 开始 core_500 小规模真实执行验证。新增 `batch_precheck` 预检、`--allow-core-500-run` 二次保护、`safe-core500-test` 安全执行 profile、批次恢复执行（pending/failed/empty/retryable）。`batch_report` 增强 retryable_count、suggested_retry_command、risk_warning。保持所有安全机制：默认 dry-run，core_500 真实执行必须 `--allow-core-500-run`。
+
+### V1.4.8 已完成
+
+- 新增 `batch_precheck`，执行前验证 batch/calendar/DuckDB/Parquet/Provider 状态。
+- `batch_runner` 增加 core_500 真实执行二次保护 `--allow-core-500-run`。
+- `batch_runner` 支持 `--profile safe-core500-test`（limit≤10, sleep≥1.0, stop_on_failed_rate, max_failed_rate≤0.3）。
+- `batch_runner` 支持按 `--status pending/failed/empty/retryable` 恢复执行。
+- `batch_report` 增强 retryable_count / non_retryable_count / suggested_retry_command / risk_warning。
+- `batch_runner` confirm 后自动尝试 after snapshot。
+- 提供 core_500 2024年 qfq 小区间真实执行标准流程。
+- 保持 dry-run 默认。
+- 真实执行必须 `--confirm`。
+- core_500 真实执行必须 `--allow-core-500-run`。
+- `--save-local` 必须配合 `--confirm`。
+- PostgreSQL / SQLite 仍不存行情明细。
+
+### V1.4.8 当前限制
+
+- 本版本不是 core_500 全量补数。
+- 本版本不是全市场补数。
+- 本版本只建议跑 core_500 的 2024 年 qfq 小区间验证。
+- 每次执行仍必须指定 batch_id、limit、confirm。
+- `batch_runner` 不会自动循环补完整个 batch。
+- Provider 稳定性受 AkShare / Tushare / MiniQMT 环境影响。
+- 本版本不做板块问诊、龙头识别、持仓决策。
+- 本版本不接 Qlib、Alpha158、Alpha360。
+
+### V1.4.8 安全 CLI 示例
+
+```bash
+# 1. 构建 core_500
+python -m src.backfill.core_universe_builder --core-size 500 --confirm
+
+# 2. 创建 2024年1月 qfq 小批次计划
+python -m src.backfill.batch_planner --universe core_500 --start-date 20240101 --end-date 20240131 --adj qfq --limit 20 --allow-core-500-plan --confirm
+
+# 3. 预检
+python -m src.backfill.batch_precheck --batch-id <batch_id>
+
+# 4. no-save 小规模验证（10条）
+python -m src.backfill.batch_runner --batch-id <batch_id> --profile safe-core500-test --limit 10 --confirm --no-save --allow-core-500-run
+
+# 5. save-local 真实落库（10条）
+python -m src.backfill.batch_runner --batch-id <batch_id> --profile safe-core500-test --limit 10 --confirm --save-local --allow-core-500-run
+
+# 6. 批次报告
+python -m src.backfill.batch_report --batch-id <batch_id>
+
+# 7. 重试失败任务
+python -m src.backfill.batch_runner --batch-id <batch_id> --status retryable --limit 10 --confirm --no-save --allow-core-500-run
+```
+
+### 下一版本 V1.4.9 建议
+
+- Streamlit 增加 backfill batch 页面。
+- 可视化展示 batch 状态、覆盖率快照、Provider 失败率。
+- 支持从 UI 查看 suggested command。
+- 支持批次执行日志查询。
+
+## V1.4.7 core_500 分批补数准备与批次管理
 
 V1.4.7 为 core_500 分批补数做准备。新增批次元数据（`backfill_batch` / `backfill_batch_snapshot`），`batch_planner` 支持 dry-run 预览 core_500 分批计划，confirm 写入时必须显式传 `--allow-core-500-plan`，`batch_runner` 按 `batch_id` 安全执行有限任务，`batch_report` 输出完整批次状态、覆盖率快照和 Provider 失败率。core_universe_builder 支持 `--core-size 500`。所有新 CLI 默认 dry-run。
 
@@ -1081,7 +1143,8 @@ quant-a-share-platform/
 - V1.4.5 core_50/core_100 小批量补数与批次统计 [完成]
 - V1.4.6 真实交易日历与证券主数据增强 [完成]
 - V1.4.7 core_500 分批补数准备与批次管理 [完成]
-- V1.4.8 core_500 小规模真实执行 [下一步]
+- V1.4.8 core_500 小规模真实执行与批次恢复 [完成]
+- V1.4.9 Streamlit backfill batch 页面 [下一步]
 - V1.5 每日任务流水线 [规划中]
 - V1.6 每日候选股报告 [规划中]
 
