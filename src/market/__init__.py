@@ -1,8 +1,8 @@
-"""market package — minimal market-state skeleton (V1.5.0).
+"""market package — market-state / market-environment judgment.
 
-This package produces a structured but deliberately *conservative* market
-state snapshot. With no broad-market index table and no limit-up/down data
-in the current substrate, ``market_state`` defaults to ``unknown`` and the
-three positioning switches default to ``unknown``. See
-:mod:`src.market.market_state`.
+V1.5.0  ``market_state.py``   conservative skeleton (always unknown).
+V1.5.1  ``market_environment.py``  real market-environment judgment from
+        ``stock_daily_raw`` data, with indicator computation and rule engine.
+
+See :mod:`src.market.market_environment` for the main V1.5.1 API.
 """

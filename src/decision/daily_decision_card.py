@@ -1,9 +1,13 @@
-"""V1.5.0 daily decision card — integrates market/sentiment/sector/rules.
+"""V1.5.1 daily decision card — integrates market/sentiment/sector/rules.
 
 Pure, read-only orchestrator. No writes, no network, no auto-backfill.
 Each sub-builder is wrapped in try/except so a failure in one module
 never blanks out the whole card; the affected section is filled with
 ``unknown`` / ``None`` / ``[]`` and an issue is recorded.
+
+V1.5.1 adds ``market_environment`` from the real market-environment
+judgment module, which computes actual indicators from ``stock_daily_raw``
+instead of always returning ``unknown``.
 """
 from __future__ import annotations
 
@@ -26,7 +30,7 @@ from src.rules.basic_decision_rules import (
 
 @dataclass
 class DailyDecisionCard:
-    """The structured 'today decision card' (V1.5.0 skeleton)."""
+    """The structured 'today decision card' (V1.5.1)."""
 
     trade_date: str | None
     overall_bias: str
@@ -45,24 +49,47 @@ class DailyDecisionCard:
     market_snapshot: dict[str, Any] = field(default_factory=dict)
     sentiment_snapshot: dict[str, Any] = field(default_factory=dict)
     sector_snapshot: dict[str, Any] = field(default_factory=dict)
+    # V1.5.1 market environment (real indicators + judgment)
+    market_environment: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def _safe_market(trade_date: str | None) -> tuple[Any, str]:
-    """Return (snapshot, error_or_empty)."""
+def _safe_market(trade_date: str | None) -> tuple[Any, str, dict[str, Any]]:
+    """Return (V1.5.0_snapshot, error_or_empty, V1.5.1_env_dict)."""
+    env_dict: dict[str, Any] = {}
     try:
         snap = build_market_snapshot(trade_date)
-        return snap, ""
-    except Exception as exc:  # graceful degradation
+    except Exception as exc:
         from src.market.market_state import MarketSnapshot
-        return MarketSnapshot(
+        snap = MarketSnapshot(
             trade_date=trade_date, market_state=MARKET_UNKNOWN,
             risk_level="unknown", can_open_position="unknown",
             can_add_position="unknown", chase_high_allowed="unknown",
             action_hint="数据不足，建议仅观察",
-        ), f"market_state 构建失败：{type(exc).__name__}"
+        )
+        return snap, f"market_state 构建失败：{type(exc).__name__}", env_dict
+
+    # V1.5.1: also build real market environment judgment
+    try:
+        from src.market.market_environment import build_market_environment
+        env = build_market_environment(trade_date)
+        env_dict = env.as_dict()
+        # If V1.5.1 has a real judgment (not unknown), use it to enrich
+        # the V1.5.0 snapshot for downstream consumers that only read the
+        # old fields.
+        if env.market_state != "unknown":
+            snap.market_state = env.market_state
+            snap.risk_level = env.risk_level
+            snap.can_open_position = "true" if env.can_open_position else "false"
+            snap.can_add_position = "true" if env.can_add_position else "false"
+            snap.chase_high_allowed = "true" if env.chase_high_allowed else "false"
+            snap.action_hint = env.action_hint
+    except Exception:
+        pass  # V1.5.1 optional, don't fail the whole card
+
+    return snap, "", env_dict
 
 
 def _safe_sentiment(trade_date: str | None) -> tuple[Any, str]:
@@ -96,7 +123,7 @@ def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCar
     * Calls the rules layer for overall_bias + four textual outputs.
     * Returns a card with stable schema even when all data is unknown.
     """
-    market_snap, m_err = _safe_market(trade_date)
+    market_snap, m_err, market_env = _safe_market(trade_date)
     td = market_snap.trade_date
 
     sentiment_snap, s_err = _safe_sentiment(td)
@@ -162,4 +189,5 @@ def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCar
         market_snapshot=market_snap.as_dict(),
         sentiment_snapshot=sentiment_snap.as_dict(),
         sector_snapshot=sector_snap,
+        market_environment=market_env,
     )

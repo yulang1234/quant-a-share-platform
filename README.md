@@ -1,8 +1,112 @@
 # Quant A-Share Research Platform
 
-## 当前版本：V1.4.8 core_500 小规模真实执行与批次恢复增强
+## 当前版本：V1.5.1 市场环境判断
 
-V1.4.8 开始 core_500 小规模真实执行验证。新增 `batch_precheck` 预检、`--allow-core-500-run` 二次保护、`safe-core500-test` 安全执行 profile、批次恢复执行（pending/failed/empty/retryable）。`batch_report` 增强 retryable_count、suggested_retry_command、risk_warning。保持所有安全机制：默认 dry-run，core_500 真实执行必须 `--allow-core-500-run`。
+V1.5.1 实现了一个完整的市场环境判断模块，从 `stock_daily_raw` 样本数据中聚合计算市场指标，通过可配置的规则引擎输出结构化市场判断。回答"今天能不能做 / 能不能开仓 / 能不能加仓 / 能不能追高"，最终给出一句可读的中文 action_hint。
+
+### V1.5.1 已完成
+
+- 新增 `src/market/market_types.py` — V1.5.1 枚举 token + `MarketEnvironment` dataclass。
+- 新增 `src/market/market_indicators.py` — 从 `stock_daily_raw` 计算 14+ 个全市场指标（涨跌幅、涨跌比、近似涨停/跌停、成交额比、MA 广度、波动率等）。
+- 新增 `src/market/market_environment.py` — 编排器 + CLI 入口（`python -m src.market.market_environment --date YYYY-MM-DD [--json]`）。
+- 新增 `src/rules/market_environment_rules.py` — 纯规则引擎：指标 → market_state / risk_level / boolean flags / action_hint / reasons。
+- `market_state` 可选：attack / neutral / defense / high_risk / unknown。
+- `risk_level` 可选：low / medium / high / extreme / unknown。
+- `can_open_position` / `can_add_position` / `chase_high_allowed` 均为 bool。
+- 所有判断附带中文 reasons，规则阈值集中可配置。
+- **优雅降级**：数据不足返回 unknown，历史窗口不足的指标列入 `missing_indicator_names` 且不出现在 dict 中（不写 None）。
+- `src/decision/daily_decision_card.py` 集成 V1.5.1 市场环境输出（新增 `market_environment` 字段）。
+- 不引入新数据源，所有指标基于已有 `stock_daily_raw` 聚合（标记为"样本"而非"全市场"）。
+- 无涨停/跌停真实标记时使用 pct_change ≥ ±9.8% 近似，字段名为 `approximate_limit_up_count` / `approximate_limit_down_count`。
+
+### V1.5.1 使用方式
+
+```bash
+# CLI 判断指定日期市场环境
+python -m src.market.market_environment --date 2026-07-08
+python -m src.market.market_environment --date 2026-07-08 --json
+
+# 代码调用
+from src.market.market_environment import build_market_environment
+env = build_market_environment("2026-07-08")
+print(env.action_hint)   # 样本平均涨跌 -0.60%，短期偏弱 → defense
+print(env.as_dict())      # 完整结构化输出
+```
+
+### V1.5.1 输出示例
+
+```json
+{
+  "trade_date": "2026-07-08",
+  "market_state": "defense",
+  "risk_level": "medium",
+  "can_open_position": false,
+  "can_add_position": false,
+  "chase_high_allowed": false,
+  "action_hint": "市场环境偏弱，不建议开新仓或加仓...",
+  "indicators": {
+    "sample_stock_count": 185,
+    "valid_stock_count": 43,
+    "up_count": 15, "down_count": 25, "flat_count": 3,
+    "advance_decline_ratio": 0.6,
+    "avg_pct_chg": -0.603, "median_pct_chg": -0.45,
+    "return_5d": -5.0611, "return_20d": -4.8708,
+    "missing_indicator_names": ["pct_above_ma5", ...]
+  },
+  "reasons": [
+    "部分指标因历史数据窗口不足未参与判断 ...",
+    "涨跌家数比 0.60，下跌家数多于上涨家数",
+    "样本平均涨跌 -0.60%，短期偏弱"
+  ],
+  "version": "v1.5.1"
+}
+```
+
+### V1.5.1 当前限制
+
+- 无真实指数表，使用样本股票等权平均代理（不称"全市场"）。
+- 无真实涨停/跌停标记，使用 pct_change 阈值近似。
+- 均线、量比、波动率等指标依赖历史窗口（≥5/10/20 日），窗口不足时列入 `missing_indicator_names`。
+- 本版本只做市场环境判断，不做情绪周期、板块强度、龙头识别。
+- 不输出任何个股买卖建议，不接实盘交易。
+
+### V1.5.1 测试
+
+- `tests/test_market_environment.py`：26 个测试（规则引擎、指标计算、编排器、类型、向后兼容）
+- pytest：36 passed（含 V1.5.0 原有 7 个 + V1.5.1 新增 26 个 + 情绪/板块 3 个）
+
+---
+
+## V1.5.0 最小投研决策闭环骨架
+
+V1.5.0 建立了每日投研决策卡的最小骨架：市场状态（保守 unknown-by-default）、情绪周期、板块快照、决策规则层、Markdown 渲染器。所有模块都是只读编排，每层 try/except 包裹，不写文件、不发网络、不做回填。
+
+### V1.5.0 已完成
+
+- 新增 `src/market/market_state.py` — 保守市场状态快照（V1.5.0 始终 unknown）。
+- 新增 `src/sentiment/sentiment_cycle.py` — 情绪周期骨架。
+- 新增 `src/sector/sector_snapshot.py` — 板块快照与强度排名。
+- 新增 `src/rules/basic_decision_rules.py` — 决策规则层（overall_bias / risk_warnings / suggested_actions / observation_conditions / invalidation_conditions）。
+- 新增 `src/decision/daily_decision_card.py` — 今日决策卡编排器。
+- 新增 `src/report/daily_decision_report.py` — 决策卡 Markdown 渲染器。
+- suggested_actions 白名单机制，禁止出现"买入/卖出/加仓/清仓/满仓/重仓"等词汇。
+- overall_bias 在 V1.5.0 中最高只到 neutral，aggressive 不可达。
+
+### V1.5.0 当前限制
+
+- market_state 始终 unknown（无指数数据）。
+- sentiment_cycle 始终 unknown（无涨跌停数据）。
+- 本版本是骨架，不输出具体个股方向，不接实盘。
+
+---
+
+## V1.4.9 数据质量仪表盘增强与 backfill 失败批次页面
+
+V1.4.9 新增 Streamlit backfill batch 失败仪表盘页面和 batch_failure 数据模型。支持按 batch_id 查看失败任务详情、错误分类和 suggested command。
+
+---
+
+## V1.4.8 core_500 小规模真实执行与批次恢复增强
 
 ### V1.4.8 已完成
 
@@ -528,7 +632,7 @@ streamlit run ui/streamlit_app.py
 - 所有结果仅用于个人量化研究，不构成投资建议
 
 ### 测试
-- pytest: 537 passed
+- pytest: 537+ passed（含 V1.5.0/V1.5.1 市场/决策/规则测试）
 
 ## V1.3 已完成内容
 
@@ -1049,9 +1153,17 @@ quant-a-share-platform/
 │   │   ├── backtest_engine.py
 │   │   └── run_backtest.py
 │   ├── llm/                       # V1.x AI 分析预留
+│   ├── market/                    # V1.5.0/V1.5.1 市场状态与环境判断
+│   │   ├── market_state.py        # V1.5.0 保守骨架
+│   │   ├── market_types.py        # V1.5.1 枚举 + dataclass
+│   │   ├── market_indicators.py   # V1.5.1 全样本指标计算
+│   │   └── market_environment.py  # V1.5.1 编排器 + CLI
 │   ├── qlib_lab/                  # V1.7+ Qlib 预留
-│   ├── report/                    # V1.x 报告预留
+│   ├── report/                    # V1.5.0 决策卡 Markdown 渲染
 │   ├── scoring/                   # 预留
+│   ├── rules/                     # V1.5.0/V1.5.1 决策规则
+│   │   ├── basic_decision_rules.py       # V1.5.0 基础决策规则
+│   │   └── market_environment_rules.py   # V1.5.1 市场环境规则引擎
 │   ├── storage/
 │   │   ├── duckdb_repo.py
 │   │   ├── parquet_repo.py
@@ -1065,6 +1177,13 @@ quant-a-share-platform/
 │   └── streamlit_app.py           # 12 个标签页
 ├── tests/
 │   ├── conftest.py
+│   ├── test_market_environment.py   # V1.5.1 市场环境判断
+│   ├── test_market_state.py         # V1.5.0 市场状态
+│   ├── test_daily_decision_card.py  # V1.5.0 决策卡
+│   ├── test_daily_decision_report.py # V1.5.0 决策报告
+│   ├── test_basic_decision_rules.py # V1.5.0 决策规则
+│   ├── test_sentiment_cycle.py      # V1.5.0 情绪周期
+│   ├── test_sector_snapshot.py      # V1.5.0 板块快照
 │   ├── test_akshare_client.py
 │   ├── test_base_factor.py        # V0.7
 │   ├── test_backtest_config.py    # V1.1
@@ -1144,9 +1263,12 @@ quant-a-share-platform/
 - V1.4.6 真实交易日历与证券主数据增强 [完成]
 - V1.4.7 core_500 分批补数准备与批次管理 [完成]
 - V1.4.8 core_500 小规模真实执行与批次恢复 [完成]
-- V1.4.9 Streamlit backfill batch 页面 [下一步]
-- V1.5 每日任务流水线 [规划中]
-- V1.6 每日候选股报告 [规划中]
+- V1.4.9 Streamlit backfill batch 页面 [完成]
+- V1.5.0 最小投研决策闭环骨架 [完成]
+- V1.5.1 市场环境判断 [完成]
+- V1.5.2 真实情绪周期 / 板块强度 [下一步]
+- V1.6 每日任务流水线 [规划中]
+- V1.7 每日候选股报告 [规划中]
 
 ## 免责声明
 
