@@ -849,7 +849,7 @@ with t_pool:
                         # Build success message
                         name_part = info["stock_name"]
                         if info["sector"]:
-                            sector_part = f"板块/行业：{info["sector"]}"
+                            sector_part = f"板块/行业：{info['sector']}"
                         else:
                             sector_part = "板块/行业待补充"
                         st.session_state["_add_msg"] = (
