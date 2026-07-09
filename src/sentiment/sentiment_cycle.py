@@ -139,6 +139,17 @@ def build_sentiment_snapshot(trade_date: str | None = None) -> SentimentSnapshot
     back to the old ``SentimentSnapshot`` format for backward compatibility.
     """
     td = _resolve_trade_date(trade_date)
+    quality = build_quality_overview()
+    quality_status = str(quality.get("overall_status") or "unknown")
+    if quality_status == "unknown" or not _has_limit_up_data():
+        return SentimentSnapshot(
+            trade_date=td,
+            sentiment_cycle=SENTIMENT_UNKNOWN_OLD,
+            risk_hint=_HINT_INSUFFICIENT,
+            evidence={"note": "insufficient sentiment data"},
+            data_quality_status=quality_status,
+            issue_summary=list(quality.get("top_issues") or []),
+        )
 
     # Build V1.5.2 cycle first
     try:

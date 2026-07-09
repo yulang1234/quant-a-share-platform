@@ -30,8 +30,9 @@ class TestMarketDataService:
         assert prov == "local_cache"; assert not result.empty
 
     def test_all_fail_raises(self) -> None:
-        p = _Stub("local_cache", exc=Exception("fail"))
-        svc = MarketDataService(); svc._providers["local_cache"] = p
+        svc = MarketDataService()
+        for key in list(svc._providers.keys()):
+            svc._providers[key] = _Stub(key, exc=Exception("fail"))
         with pytest.raises(ProviderDataEmptyError):
             svc.get_daily_bars("000001", "20260101", "20260105", "raw")
 

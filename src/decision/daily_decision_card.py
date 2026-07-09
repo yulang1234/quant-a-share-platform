@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Any
 
-from src.data_quality.quality_dashboard import HEALTH_UNKNOWN
+from src.data_quality.quality_dashboard import HEALTH_HEALTHY, HEALTH_UNKNOWN, HEALTH_USABLE
 from src.market.market_state import build_market_snapshot, MARKET_UNKNOWN
 from src.sentiment.sentiment_cycle import (
     build_sentiment_snapshot, SENTIMENT_UNKNOWN,
@@ -89,7 +89,7 @@ def _safe_market(trade_date: str | None) -> tuple[Any, str, dict[str, Any]]:
         # If V1.5.1 has a real judgment (not unknown), use it to enrich
         # the V1.5.0 snapshot for downstream consumers that only read the
         # old fields.
-        if env.market_state != "unknown":
+        if snap.data_quality_status in (HEALTH_HEALTHY, HEALTH_USABLE) and env.market_state != "unknown":
             snap.market_state = env.market_state
             snap.risk_level = env.risk_level
             snap.can_open_position = "true" if env.can_open_position else "false"
@@ -120,7 +120,7 @@ def _safe_sentiment(trade_date: str | None) -> tuple[Any, str, dict[str, Any]]:
         cycle = build_sentiment_cycle(trade_date)
         cycle_dict = cycle.as_dict()
         # If V1.5.2 has a real judgment, enrich the V1.5.0 snapshot
-        if cycle.sentiment_cycle != "unknown":
+        if snap.data_quality_status in (HEALTH_HEALTHY, HEALTH_USABLE) and cycle.sentiment_cycle != "unknown":
             snap.sentiment_cycle = cycle_dict.get("sentiment_cycle", SENTIMENT_UNKNOWN)
             snap.risk_hint = cycle.action_hint
     except Exception:

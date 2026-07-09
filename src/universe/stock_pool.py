@@ -875,23 +875,41 @@ def repair_stock_pool_data(pool_name: str = DEFAULT_POOL) -> dict[str, int]:
     """
     con = get_connection()
     result: dict[str, int] = {"sectors_fixed": 0, "names_fixed": 0, "names_to_fix": 0}
+    effective_pool = pool_name
+    if pool_name == "universe_all_a":
+        pool_count = con.execute(
+            "SELECT COUNT(*) FROM stock_pool WHERE pool_name = ?",
+            [pool_name],
+        ).fetchone()[0]
+        legacy_count = con.execute(
+            "SELECT COUNT(*) FROM stock_pool WHERE pool_name = 'core_500'",
+        ).fetchone()[0]
+        if int(pool_count or 0) == 0 and int(legacy_count or 0) > 0:
+            effective_pool = "core_500"
 
-    # 1. Backfill sector from note
-    updated = con.execute(
+    # 1. Backfill sector from note. Count first; DuckDB update rowcount differs
+    # across versions and can be unreliable in tests.
+    note_backfill_count = con.execute(
+        "SELECT COUNT(*) FROM stock_pool "
+        "WHERE pool_name = ? "
+        "  AND (sector IS NULL OR sector = '' OR sector = 'None') "
+        "  AND note IS NOT NULL AND note != ''",
+        [effective_pool],
+    ).fetchone()[0]
+    con.execute(
         "UPDATE stock_pool SET sector = note "
         "WHERE pool_name = ? "
         "  AND (sector IS NULL OR sector = '' OR sector = 'None') "
         "  AND note IS NOT NULL AND note != ''",
-        [pool_name],
-    ).fetchone()
-    if updated:
-        result["sectors_fixed"] = int(updated[0])
+        [effective_pool],
+    )
+    result["sectors_fixed"] = int(note_backfill_count or 0)
 
     # 2. Clear "None" string values & garbled sector placeholders
     con.execute(
         "UPDATE stock_pool SET sector = '' "
         "WHERE sector IN ('None', 'nan', '<NA>') AND pool_name = ?",
-        [pool_name],
+        [effective_pool],
     )
 
     # 3. Fix bad stock names via AkShare
@@ -914,7 +932,7 @@ def repair_stock_pool_data(pool_name: str = DEFAULT_POOL) -> dict[str, int]:
                         con.execute(
                             "UPDATE stock_pool SET stock_name = ? "
                             "WHERE stock_code = ? AND pool_name = ?",
-                            [new_name, str(code), pool_name],
+                            [new_name, str(code), effective_pool],
                         )
                         result["names_fixed"] += 1
                         logger.info("Repair: fixed name for %s → %s", code, new_name)
@@ -930,7 +948,7 @@ def repair_stock_pool_data(pool_name: str = DEFAULT_POOL) -> dict[str, int]:
         "SELECT stock_code, stock_name FROM stock_pool "
         "WHERE pool_name = ? "
         "  AND (sector IS NULL OR sector = '' OR sector = 'None')",
-        [pool_name],
+        [effective_pool],
     ).fetchall()
 
     for code, name in empty_sectors:
@@ -938,7 +956,7 @@ def repair_stock_pool_data(pool_name: str = DEFAULT_POOL) -> dict[str, int]:
         if info["sector"]:
             con.execute(
                 "UPDATE stock_pool SET sector = ? WHERE stock_code = ? AND pool_name = ?",
-                [info["sector"], str(code), pool_name],
+                [info["sector"], str(code), effective_pool],
             )
             result["sectors_fixed"] += 1
             logger.info(
