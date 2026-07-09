@@ -51,6 +51,16 @@ class DailyDecisionCard:
     sector_snapshot: dict[str, Any] = field(default_factory=dict)
     # V1.5.1 market environment (real indicators + judgment)
     market_environment: dict[str, Any] = field(default_factory=dict)
+    # V1.5.2 sentiment cycle (real indicators + judgment)
+    sentiment_cycle_v2: dict[str, Any] = field(default_factory=dict)
+    # V1.5.4 sector strength ranking.
+    sector_strength_top: list[dict[str, Any]] = field(default_factory=list)
+    # V1.5.5 mainline sector snapshot.
+    mainline_snapshot: dict[str, Any] = field(default_factory=dict)
+    # V1.5.6 sector diagnosis examples.
+    sector_diagnosis_examples: list[dict[str, Any]] = field(default_factory=list)
+    # Stable Chinese summary hint for the integrated V1.5 card.
+    action_hint: str = "数据不足，今日仅做观察"
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -92,15 +102,31 @@ def _safe_market(trade_date: str | None) -> tuple[Any, str, dict[str, Any]]:
     return snap, "", env_dict
 
 
-def _safe_sentiment(trade_date: str | None) -> tuple[Any, str]:
+def _safe_sentiment(trade_date: str | None) -> tuple[Any, str, dict[str, Any]]:
+    """Return (V1.5.0_snapshot, error, V1.5.2_sentiment_cycle_dict)."""
+    cycle_dict: dict[str, Any] = {}
     try:
         snap = build_sentiment_snapshot(trade_date)
-        return snap, ""
     except Exception as exc:
         from src.sentiment.sentiment_cycle import SentimentSnapshot
-        return SentimentSnapshot(
+        snap = SentimentSnapshot(
             trade_date=trade_date, sentiment_cycle=SENTIMENT_UNKNOWN,
-        ), f"sentiment_cycle 构建失败：{type(exc).__name__}"
+        )
+        return snap, f"sentiment_cycle 构建失败：{type(exc).__name__}", cycle_dict
+
+    # V1.5.2: also build real sentiment cycle judgment
+    try:
+        from src.sentiment.sentiment_cycle import build_sentiment_cycle
+        cycle = build_sentiment_cycle(trade_date)
+        cycle_dict = cycle.as_dict()
+        # If V1.5.2 has a real judgment, enrich the V1.5.0 snapshot
+        if cycle.sentiment_cycle != "unknown":
+            snap.sentiment_cycle = cycle_dict.get("sentiment_cycle", SENTIMENT_UNKNOWN)
+            snap.risk_hint = cycle.action_hint
+    except Exception:
+        pass  # V1.5.2 optional, don't fail the whole card
+
+    return snap, "", cycle_dict
 
 
 def _safe_sector(trade_date: str | None) -> tuple[dict[str, Any], str]:
@@ -115,6 +141,78 @@ def _safe_sector(trade_date: str | None) -> tuple[dict[str, Any], str]:
         }, f"sector_snapshot 构建失败：{type(exc).__name__}"
 
 
+def _safe_sector_strength_top(trade_date: str | None) -> tuple[list[dict[str, Any]], str]:
+    try:
+        from src.sector.sector_strength import get_sector_rank
+        ranking = get_sector_rank(str(trade_date), top_n=5)
+        return list(ranking.as_dict().get("sectors") or []), ""
+    except Exception as exc:
+        return [], f"sector_strength 构建失败：{type(exc).__name__}"
+
+
+def _safe_mainline_snapshot(trade_date: str | None) -> tuple[dict[str, Any], str]:
+    try:
+        from src.sector.sector_mainline import build_mainline_snapshot
+        snapshot = build_mainline_snapshot(str(trade_date))
+        return snapshot.as_dict(), ""
+    except Exception as exc:
+        return {
+            "trade_date": trade_date,
+            "confirmed_mainlines": [],
+            "potential_mainlines": [],
+            "one_day_themes": [],
+            "cooling_sectors": [],
+            "high_risk_sectors": [],
+            "has_clear_mainline": False,
+            "market_mainline_summary": "主线数据不足，暂不判断。",
+        }, f"sector_mainline 构建失败：{type(exc).__name__}"
+
+
+def _safe_sector_diagnosis_examples(
+    trade_date: str | None,
+    sector_strength_top: list[dict[str, Any]],
+    mainline_snapshot: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str]:
+    candidates: list[dict[str, Any]] = []
+    candidates.extend(sector_strength_top or [])
+    for key in ("confirmed_mainlines", "potential_mainlines", "one_day_themes"):
+        candidates.extend(mainline_snapshot.get(key) or [])
+
+    seen: set[str] = set()
+    examples: list[dict[str, Any]] = []
+    try:
+        from src.sector.sector_diagnosis import diagnose_sector_by_name
+        for item in candidates:
+            code = str(item.get("sector_code") or "")
+            name = str(item.get("sector_name") or "")
+            dedupe_key = code or name
+            if not dedupe_key or dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            diag = diagnose_sector_by_name(str(trade_date), sector_code=code or None, sector_name=name or None)
+            examples.append(diag.as_dict())
+            if len(examples) >= 3:
+                break
+        return examples, ""
+    except Exception as exc:
+        return examples, f"sector_diagnosis 构建失败：{type(exc).__name__}"
+
+
+def _build_card_action_hint(
+    market_state: str,
+    sentiment_cycle: str,
+    sector_strength_top: list[dict[str, Any]],
+    mainline_snapshot: dict[str, Any],
+) -> str:
+    if market_state in ("high_risk", "weak") or sentiment_cycle in ("retreat", "cooling"):
+        return "市场或情绪偏弱，今日以防守观察为主。"
+    if mainline_snapshot.get("has_clear_mainline"):
+        return "主线较清晰，优先观察主线板块的持续性。"
+    if sector_strength_top:
+        return "已有板块强度线索，等待主线确认后再提高进攻性。"
+    return "数据不足，今日仅做观察。"
+
+
 def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCard:
     """Build the integrated daily decision card.
 
@@ -126,8 +224,13 @@ def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCar
     market_snap, m_err, market_env = _safe_market(trade_date)
     td = market_snap.trade_date
 
-    sentiment_snap, s_err = _safe_sentiment(td)
+    sentiment_snap, s_err, sentiment_v2 = _safe_sentiment(td)
     sector_snap, sec_err = _safe_sector(td)
+    sector_strength_top, strength_err = _safe_sector_strength_top(td)
+    mainline_snapshot, mainline_err = _safe_mainline_snapshot(td)
+    diagnosis_examples, diagnosis_err = _safe_sector_diagnosis_examples(
+        td, sector_strength_top, mainline_snapshot,
+    )
 
     market_state = market_snap.market_state
     sentiment_cycle = sentiment_snap.sentiment_cycle
@@ -164,6 +267,12 @@ def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCar
         issues.append(s_err)
     if sec_err:
         issues.append(sec_err)
+    if strength_err:
+        issues.append(strength_err)
+    if mainline_err:
+        issues.append(mainline_err)
+    if diagnosis_err:
+        issues.append(diagnosis_err)
     issues.extend(market_snap.issue_summary or [])
     issues.extend(sector_snap.get("issue_summary") or [])
     if not issues:
@@ -171,6 +280,9 @@ def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCar
 
     # Serialise sectors to dict for downstream Markdown/UI.
     sector_dicts = [r.as_dict() for r in (sector_snap.get("sectors") or [])]
+    action_hint = _build_card_action_hint(
+        market_state, sentiment_cycle, sector_strength_top, mainline_snapshot,
+    )
 
     return DailyDecisionCard(
         trade_date=td,
@@ -190,4 +302,9 @@ def build_daily_decision_card(trade_date: str | None = None) -> DailyDecisionCar
         sentiment_snapshot=sentiment_snap.as_dict(),
         sector_snapshot=sector_snap,
         market_environment=market_env,
+        sentiment_cycle_v2=sentiment_v2,
+        sector_strength_top=sector_strength_top,
+        mainline_snapshot=mainline_snapshot,
+        sector_diagnosis_examples=diagnosis_examples,
+        action_hint=action_hint,
     )

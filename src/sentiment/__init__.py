@@ -1,7 +1,13 @@
-"""sentiment package — minimal sentiment-cycle skeleton (V1.5.0).
+"""sentiment package — market sentiment cycle judgment (V1.5.2).
 
-The current data substrate does not persist limit-up / limit-down /
-consecutive-board / failed-limit-up counts, so ``sentiment_cycle`` defaults
-to ``unknown`` and all count fields are ``None``. See
-:mod:`src.sentiment.sentiment_cycle`.
+V1.5.2 provides:
+- Sentiment indicator computation from ``stock_daily_raw``
+- Rule-based sentiment cycle judgment (ice_point / repair / warming /
+  climax / cooling / retreat / chaotic / unknown)
+- Structured output with action hints, risk levels, and reasons
+
+Backward compatible with V1.5.0 ``SentimentSnapshot`` and
+``build_sentiment_snapshot()``.
+
+See :mod:`src.sentiment.sentiment_cycle` for the main entry point.
 """

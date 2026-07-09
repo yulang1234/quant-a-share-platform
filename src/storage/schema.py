@@ -644,6 +644,38 @@ CREATE_TABLE_SQL: list[str] = [
         PRIMARY KEY (model_name, trade_date, stock_code, factor_name, universe_name)
     );
     """,
+    # 37. Sector basic info (V1.5.3)
+    """
+    CREATE TABLE IF NOT EXISTS sector_basic (
+        sector_code         VARCHAR(32)  NOT NULL,
+        sector_name         VARCHAR(128) NOT NULL,
+        sector_type         VARCHAR(32)  NOT NULL DEFAULT 'unknown',
+        source              VARCHAR(32)  NOT NULL DEFAULT 'manual',
+        source_sector_code  VARCHAR(64),
+        description         VARCHAR(512),
+        is_active           BOOLEAN      DEFAULT TRUE,
+        created_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (sector_code)
+    );
+    """,
+    # 38. Stock-sector mapping (V1.5.3)
+    """
+    CREATE TABLE IF NOT EXISTS stock_sector_map (
+        stock_code          VARCHAR(6)   NOT NULL,
+        stock_name          VARCHAR(64),
+        sector_code         VARCHAR(32)  NOT NULL,
+        sector_name         VARCHAR(128),
+        sector_type         VARCHAR(32)  NOT NULL DEFAULT 'unknown',
+        source              VARCHAR(32)  NOT NULL DEFAULT 'manual',
+        weight              DOUBLE       DEFAULT 1.0,
+        is_active           BOOLEAN      DEFAULT TRUE,
+        start_date          DATE,
+        end_date            DATE,
+        updated_at          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (stock_code, sector_code, source)
+    );
+    """,
 ]
 
 

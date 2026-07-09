@@ -28,6 +28,7 @@ data/duckdb/*.duckdb
 data/duckdb/*.wal
 data/duckdb/*.wal.corrupt
 data/duckdb/backup-*/
+data/server_snapshot/
 
 # Metadata database fallback
 data/meta/*.db
@@ -62,3 +63,4 @@ Thumbs.db
 # Streamlit
 streamlit.out.log
 streamlit.err.log
+streamlit.log

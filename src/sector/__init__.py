@@ -1,8 +1,14 @@
-"""sector package — minimal sector-strength skeleton (V1.5.0).
+"""sector package — sector management and stock-sector mapping (V1.5.3).
 
-Sectors are derived *on the fly* by joining ``security_master.industry``
-with ``stock_daily_raw.pct_change`` for the latest trade date — there is no
-pre-computed sector daily-return table. When either side is missing,
-:func:`src.sector.sector_snapshot.build_sector_snapshot` returns an empty
-list rather than raising.
+V1.5.3 provides:
+- Sector basic info storage (sector_basic table)
+- Stock-sector mapping storage (stock_sector_map table)
+- AkShare-based sector data sync with dry-run/confirm protection
+- Query APIs: get sectors by stock, get stocks by sector
+- Graceful degradation when data sources are unavailable
+
+V1.5.0 snapshot (sector_snapshot) is preserved for backward compatibility.
+
+See :mod:`src.sector.sector_service` for query APIs.
+See :mod:`src.sector.sector_sync` for data sync CLI.
 """
