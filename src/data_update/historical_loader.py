@@ -1,20 +1,18 @@
 """
 Historical data loader -- batch-load up to 20 years of daily data per stock.
 
-This is the V0.3 core module.  It reads active stocks from the stock pool
-and fetches historical daily K-line data via AkShare, then persists both
-raw and forward-adjusted data to DuckDB and Parquet.
+V1.5.7: default pool is universe_all_a. Use --recent-days for safety.
 
 CLI usage::
 
-    # Full run (500 stocks, raw + qfq)
-    python -m src.data_update.historical_loader --pool core_500 --adj all
+    # Recent 30 days (recommended)
+    python -m src.data_update.historical_loader --pool universe_all_a --recent-days 30 --adj qfq --dry-run
 
-    # Small-batch test (5 stocks, raw only)
+    # Small-batch test (5 stocks)
+    python -m src.data_update.historical_loader --pool universe_all_a --limit 5 --adj qfq --dry-run
+
+    # Legacy core_500
     python -m src.data_update.historical_loader --pool core_500 --limit 5 --adj raw
-
-    # Custom date range
-    python -m src.data_update.historical_loader --pool core_500 --start-date 20200101 --end-date 20231231 --limit 3
 """
 
 from __future__ import annotations
@@ -148,7 +146,7 @@ def load_one_stock(
 
 
 def load_historical_data(
-    pool_name: str = "core_500",
+    pool_name: str = "universe_all_a",
     start_date: str | None = None,
     end_date: str | None = None,
     limit: int | None = None,
@@ -160,7 +158,7 @@ def load_historical_data(
     Parameters
     ----------
     pool_name : str
-        Stock pool name (default ``"core_500"``).
+        Stock pool name (default ``"universe_all_a"``, legacy ``"core_500"``).
     start_date : str, optional
         ``"YYYYMMDD"``.  Defaults to 20 years before today.
     end_date : str, optional
@@ -261,8 +259,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--pool",
-        default="core_500",
-        help="Stock pool name (default: core_500)",
+        default="universe_all_a",
+        help="Stock pool name (default: universe_all_a)",
     )
     parser.add_argument(
         "--start-date",

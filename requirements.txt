@@ -8,4 +8,4 @@ plotly
 python-dotenv
 pytest
 sqlalchemy
-psycopg[binary]
+# PostgreSQL removed — project uses SQLite + DuckDB + Parquet only

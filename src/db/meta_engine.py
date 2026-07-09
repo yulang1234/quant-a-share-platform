@@ -1,4 +1,4 @@
-"""V1.4.1 Meta-database engine — PostgreSQL with SQLite fallback."""
+"""V1.4.1 Meta-database engine — SQLite (local single-machine)."""
 
 from __future__ import annotations
 

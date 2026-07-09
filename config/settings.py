@@ -42,23 +42,27 @@ def get_parquet_root() -> Path:
 
 def get_stock_pool_path() -> Path:
     """Return the absolute Path to the stock pool CSV file."""
-    rel = os.getenv("STOCK_POOL_PATH", "data/stock_pool/core_500.csv")
+    rel = os.getenv("STOCK_POOL_PATH", "data/stock_pool/universe_all_a.csv")
     return _ensure_absolute(rel)
 
 
 def get_meta_db_url() -> str:
-    """Return the meta-database connection URL.
+    """Return the meta-database connection URL (SQLite).
 
     Priority:
-    1. ``DATABASE_URL`` env var (PostgreSQL or any SQLAlchemy-compatible).
-    2. Local SQLite fallback: ``data/meta/quant_meta.db``.
+    1. ``DATABASE_URL`` env var (kept for backward compat, can be SQLite).
+    2. ``META_DB_PATH`` env var.
+    3. Local SQLite fallback: ``data/meta/quant_meta.db``.
+
+    No PostgreSQL required — project runs on SQLite + DuckDB + Parquet.
     """
     db_url = os.getenv("DATABASE_URL", "")
     if db_url:
         return db_url
-    meta_dir = _PROJECT_ROOT / "data" / "meta"
-    meta_dir.mkdir(parents=True, exist_ok=True)
-    return f"sqlite:///{meta_dir / 'quant_meta.db'}"
+    meta_path = os.getenv("META_DB_PATH", "data/meta/quant_meta.db")
+    meta_abs = _ensure_absolute(meta_path)
+    meta_abs.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{meta_abs}"
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────

@@ -1,14 +1,19 @@
-"""V1.4.7 Batch Planner — generate batch plans for core_500 staged backfill.
+"""V1.4.7 Batch Planner — generate batch plans for staged backfill.
+
+V1.5.7: universe_all_a is now the default, with safety constraints
+(default recent-days ≤45, --allow-large-range to override).
 
 Usage::
 
-    python -m src.backfill.batch_planner --universe core_500 --start-date 20240101 --end-date 20240131 --adj qfq --limit 20 --dry-run
-    python -m src.backfill.batch_planner --universe core_500 --start-date 20240101 --end-date 20240131 --adj qfq --limit 20 --allow-core-500-plan --confirm
+    python -m src.backfill.batch_planner --universe universe_all_a --recent-days 30 --adj qfq --dry-run
+    python -m src.backfill.batch_planner --universe universe_all_a --recent-days 30 --adj qfq --confirm
+    python -m src.backfill.batch_planner --universe core_500 --start-date 20240101 --end-date 20240131 --adj qfq --dry-run
 """
 
 from __future__ import annotations
 
 import sys
+from datetime import date, timedelta
 from typing import Any
 
 
@@ -17,6 +22,7 @@ from typing import Any
 LARGE_UNIVERSES: frozenset[str] = frozenset({"universe_all_a", "core_500"})
 DEFAULT_MAX_LIMIT: int = 50
 ABSOLUTE_MAX_LIMIT: int = 100
+MAX_RECENT_DAYS: int = 45  # V1.5.7: max days without --allow-large-range
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -57,13 +63,21 @@ def plan_batch(
     Returns dict with batch info, tasks, and status.
     """
     # ── Safety checks ──────────────────────────────────────────────────
-    if universe_name in LARGE_UNIVERSES:
-        if universe_name == "universe_all_a":
-            return {"error": "universe_all_a is not allowed for batch planning.", "tasks": []}
-        if universe_name == "core_500" and not dry_run and not allow_core_500_plan:
+    if universe_name == "universe_all_a":
+        # V1.5.7: allow all_a with safety constraints
+        if start_date != "20060101" and end_date != "20261231":
+            days = (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days
+            if days > MAX_RECENT_DAYS and not dry_run and not allow_core_500_plan:
+                return {
+                    "error": f"universe_all_a range {days}d exceeds {MAX_RECENT_DAYS}d limit. "
+                             f"Use --allow-large-range to override.",
+                    "tasks": [],
+                }
+    elif universe_name == "core_500":
+        if not dry_run and not allow_core_500_plan:
             return {
-                "error": "core_500 requires --allow-core-500-plan to confirm. "
-                         "core_500 is for staged batch backfill only.",
+                "error": "core_500 requires --allow-core-500-plan (legacy). "
+                         "Consider using universe_all_a instead.",
                 "tasks": [],
             }
 
@@ -181,11 +195,12 @@ def plan_batch(
 def main() -> int:
     import argparse
     p = argparse.ArgumentParser(
-        description="V1.4.7 Batch Planner — generate backfill batch plans",
+        description="V1.5.7 Batch Planner — generate backfill batch plans",
     )
-    p.add_argument("--universe", default="core_500", help="Universe name")
-    p.add_argument("--start-date", default="20060101", help="Start date YYYYMMDD")
-    p.add_argument("--end-date", default="20261231", help="End date YYYYMMDD")
+    p.add_argument("--universe", default="universe_all_a", help="Universe name (default: universe_all_a)")
+    p.add_argument("--recent-days", type=int, default=None, help="Override dates from recent N days")
+    p.add_argument("--start-date", default=None, help="Start date YYYYMMDD")
+    p.add_argument("--end-date", default=None, help="End date YYYYMMDD")
     p.add_argument("--adj", default="all", choices=["raw", "qfq", "all"])
     p.add_argument("--split", default="yearly")
     p.add_argument("--limit", type=int, default=20, help="Max tasks to generate")
@@ -193,8 +208,24 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", default=True)
     p.add_argument("--confirm", action="store_true", default=False)
     p.add_argument("--allow-core-500-plan", action="store_true", default=False,
-                   help="Required for core_500 confirm")
+                   help="Allow large universe confirm (legacy)")
+    p.add_argument("--allow-large-range", action="store_true", default=False,
+                   help="Allow universe_all_a over 45 days")
     args = p.parse_args()
+
+    # Resolve dates from --recent-days
+    if args.recent_days and not args.start_date:
+        from datetime import date, timedelta
+        end = date.today()
+        start = end - timedelta(days=args.recent_days)
+        args.start_date = start.strftime("%Y%m%d")
+        args.end_date = end.strftime("%Y%m%d")
+
+    # Default dates if neither provided
+    if not args.start_date:
+        args.start_date = (date.today() - timedelta(days=30)).strftime("%Y%m%d")
+    if not args.end_date:
+        args.end_date = date.today().strftime("%Y%m%d")
 
     dry_run = not args.confirm
 
@@ -207,7 +238,7 @@ def main() -> int:
         limit=args.limit,
         dry_run=dry_run,
         batch_name=args.batch_name,
-        allow_core_500_plan=args.allow_core_500_plan,
+        allow_core_500_plan=args.allow_core_500_plan or args.allow_large_range,
     )
 
     if result.get("error") and not result.get("tasks"):

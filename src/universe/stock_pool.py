@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ───────────────────────────────────────────────────────────
 REQUIRED_CSV_FIELDS = {"stock_code", "stock_name"}
-DEFAULT_POOL = "core_500"
+DEFAULT_POOL = "universe_all_a"  # V1.5.7: 全A主路径，core_500降级为legacy/sample
 _OVERRIDES_PATH = get_stock_pool_path().parent / "sector_overrides.csv"
 
 
@@ -340,7 +340,7 @@ def get_stock_pool(
     Parameters
     ----------
     pool_name : str
-        Pool name filter (default ``"core_500"``).
+        Pool name filter (default ``"universe_all_a"``, legacy ``"core_500"``).
     include_inactive : bool
         If ``False``, exclude ``is_active = FALSE`` rows.
     include_blacklisted : bool
@@ -360,13 +360,21 @@ def get_stock_pool(
 
     where = " AND ".join(conditions)
     sql = f"SELECT * FROM stock_pool WHERE {where} ORDER BY stock_code"
-    return query_df(sql, params)
+    df = query_df(sql, params)
+
+    # V1.5.7: fallback to core_500 if universe_all_a is empty
+    if df.empty and pool_name == "universe_all_a":
+        fb_params = ["core_500"] + params[1:]
+        df = query_df(sql, fb_params)
+
+    return df
 
 
 def get_active_stock_pool(pool_name: str = DEFAULT_POOL) -> pd.DataFrame:
     """Return only active, non-blacklisted stocks.
 
-    This is the primary function used by V0.3+ data-loading pipelines.
+    V1.5.7: Default pool is ``universe_all_a``. Falls back to ``core_500``
+    if ``universe_all_a`` is empty (legacy compatibility).
 
     Parameters
     ----------
@@ -389,6 +397,23 @@ def get_active_stock_pool(pool_name: str = DEFAULT_POOL) -> pd.DataFrame:
         """,
         [pool_name],
     )
+    # V1.5.7: fallback to core_500 if universe_all_a is empty
+    if df.empty and pool_name == "universe_all_a":
+        df = query_df(
+            """
+            SELECT stock_code, stock_name, market, exchange, pool_name
+            FROM stock_pool
+            WHERE pool_name = 'core_500'
+              AND is_active = TRUE
+              AND is_blacklisted = FALSE
+            ORDER BY stock_code
+            """,
+        )
+        if not df.empty:
+            logger.info(
+                "universe_all_a pool is empty, falling back to core_500. "
+                "Run universe_all_a build to use full market."
+            )
     return df
 
 
@@ -737,11 +762,18 @@ def delete_stock_from_pool(
     """
     code = validate_stock_code(stock_code)
     con = get_connection()
-    # Check existence first
+    # Check existence first, fall back to core_500 if needed
+    check_pool = pool_name
     exists = con.execute(
         "SELECT COUNT(*) FROM stock_pool WHERE stock_code = ? AND pool_name = ?",
-        [code, pool_name],
+        [code, check_pool],
     ).fetchone()[0] > 0
+    if not exists and pool_name == "universe_all_a":
+        check_pool = "core_500"
+        exists = con.execute(
+            "SELECT COUNT(*) FROM stock_pool WHERE stock_code = ? AND pool_name = ?",
+            [code, check_pool],
+        ).fetchone()[0] > 0
 
     if not exists:
         logger.warning("Stock %s not found in pool '%s' — nothing deleted.", code, pool_name)
@@ -749,9 +781,9 @@ def delete_stock_from_pool(
 
     con.execute(
         "DELETE FROM stock_pool WHERE stock_code = ? AND pool_name = ?",
-        [code, pool_name],
+        [code, check_pool],
     )
-    logger.info("Stock %s deleted from pool '%s'.", code, pool_name)
+    logger.info("Stock %s deleted from pool '%s'.", code, check_pool)
     return True
 
 
@@ -766,8 +798,20 @@ def _update_status(
 ) -> bool:
     """Generic status-field updater.
 
-    Sets one or both boolean fields and optionally appends a note.
+    V1.5.7: Falls back to core_500 if universe_all_a has no matching stock.
     """
+    con = get_connection()
+    code = str(stock_code).zfill(6)
+
+    # Check if stock exists in requested pool, fall back to core_500 if needed
+    exists = con.execute(
+        "SELECT COUNT(*) FROM stock_pool WHERE stock_code = ? AND pool_name = ?",
+        [code, pool_name],
+    ).fetchone()[0] > 0
+
+    if not exists and pool_name == "universe_all_a":
+        pool_name = "core_500"
+
     sets: list[str] = ["updated_at = ?"]
     params: list[Any] = [_now()]
 
@@ -781,7 +825,7 @@ def _update_status(
         sets.append("note = ?")
         params.append(note)
 
-    params.extend([stock_code, pool_name])
+    params.extend([code, pool_name])
     sql = f"UPDATE stock_pool SET {', '.join(sets)} WHERE stock_code = ? AND pool_name = ?"
 
     con = get_connection()

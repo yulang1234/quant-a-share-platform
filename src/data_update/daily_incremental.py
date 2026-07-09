@@ -1,16 +1,18 @@
 """
 Daily incremental updater -- fetch the latest trading day's data.
 
-Reads the stock pool, checks the latest ``trade_date`` already in the
-database for each stock, and pulls only the missing dates from AkShare.
+V1.5.7: default pool is universe_all_a.
 
 CLI usage::
 
-    # Small-batch test (5 stocks, raw + qfq)
-    python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj all
+    # Full all-A run (recommended)
+    python -m src.data_update.daily_incremental --pool universe_all_a --adj qfq
 
-    # Force re-fetch a date range
-    python -m src.data_update.daily_incremental --pool core_500 --limit 3 --start-date 20260701 --end-date 20260703 --force
+    # Small-batch test
+    python -m src.data_update.daily_incremental --pool universe_all_a --limit 5 --adj qfq
+
+    # Legacy core_500
+    python -m src.data_update.daily_incremental --pool core_500 --limit 5 --adj raw
 """
 
 from __future__ import annotations
@@ -230,7 +232,7 @@ def update_one_stock_incremental(
 
 
 def run_daily_incremental(
-    pool_name: str = "core_500",
+    pool_name: str = "universe_all_a",
     limit: int | None = None,
     adj: str = "all",
     start_date: str | None = None,
@@ -435,8 +437,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Daily incremental update for A-share daily data",
     )
     parser.add_argument(
-        "--pool", default="core_500",
-        help="Stock pool name (default: core_500)",
+        "--pool", default="universe_all_a",
+        help="Stock pool name (default: universe_all_a)",
     )
     parser.add_argument(
         "--limit", type=int, default=None,
