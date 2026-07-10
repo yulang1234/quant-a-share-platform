@@ -84,7 +84,7 @@ def init_meta_db() -> None:
                     enabled=True, supports_daily=True,
                 ))
         session.commit()
-    print(f"Meta DB initialised: {len(ALL_TABLES)} tables created, 4 default providers seeded.")
+    print(f"Meta DB initialised: {len(ALL_TABLES)} tables, 4 default providers seeded.")
 
 
 def main() -> int:

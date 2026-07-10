@@ -4,7 +4,7 @@ from src.backtest.backtest_engine import run_basic_backtest
 
 
 class TestEngine:
-    def test_no_selections_skipped(self) -> None:
+    def test_no_selections_skipped(self, fresh_db) -> None:  # noqa: F811
         r = run_basic_backtest(strategy_name="nonexistent", limit=1)
         assert "skipped" in r["status"]
 

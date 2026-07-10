@@ -1,6 +1,7 @@
-"""V1.4.1 Meta-database ORM models (SQLAlchemy).
+"""Meta-database ORM models (SQLAlchemy) — SQLite local single-machine.
 
-Compatible with PostgreSQL and SQLite.
+All tables live in a single SQLite file (data/meta/quant_meta.db).
+No PostgreSQL dependency.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     Integer,
@@ -325,10 +327,178 @@ class BackfillBatchSnapshot(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+# ── 14. portfolio_position (V1.7.1) ─────────────────────────────────────────
+
+class PortfolioPosition(Base):
+    """Local portfolio position record — real or simulated.
+
+    Stores cost basis, quantity, position percentage, buy rationale,
+    original strategy and an optional V1.6 entry snapshot.
+    No automatic trading or live pricing — purely a record-keeping table.
+    """
+
+    __tablename__ = "portfolio_position"
+
+    position_id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_name = Column(String(64), nullable=False, default="default", index=True)
+    stock_code = Column(String(12), nullable=False, index=True)
+    exchange = Column(String(8), nullable=False)
+    stock_name = Column(String(64), nullable=False)
+    buy_date = Column(Date, nullable=False, index=True)
+    avg_cost = Column(Float, nullable=False)
+    quantity = Column(Float, nullable=True)
+    position_pct = Column(Float, nullable=False)
+    buy_reason = Column(Text, nullable=False)
+    sector_name = Column(String(128), nullable=True)
+    original_strategy = Column(String(128), nullable=True)
+    entry_snapshot_json = Column(Text, nullable=True)
+    snapshot_version = Column(String(32), nullable=True)
+    user_note = Column(Text, nullable=True)
+    is_simulated = Column(Boolean, nullable=False, default=True, index=True)
+    source = Column(String(32), default="manual")
+    status = Column(String(16), nullable=False, default="active", index=True)
+    closed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# ── 15. portfolio_position_diagnosis (V1.7.2) ────────────────────────────────
+
+class PortfolioPositionDiagnosis(Base):
+    """Daily position diagnosis result — evaluates whether an active position
+    should continue to be held based on current market, sentiment, sector,
+    leader, trend and condition engine signals.
+
+    No trading execution.  Research-aid only.
+    """
+
+    __tablename__ = "portfolio_position_diagnosis"
+
+    diagnosis_id = Column(Integer, primary_key=True, autoincrement=True)
+    position_id = Column(Integer, nullable=False, index=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    portfolio_name = Column(String(64), nullable=False, index=True)
+    stock_code = Column(String(12), nullable=False, index=True)
+    stock_name = Column(String(64), nullable=True)
+    sector_name = Column(String(128), nullable=True)
+
+    diagnosis_status = Column(String(24), nullable=False, index=True)
+    suggested_action = Column(String(32), nullable=False, index=True)
+    thesis_status = Column(String(32), nullable=False)
+
+    market_support_score = Column(Float, default=0.0)
+    sentiment_support_score = Column(Float, default=0.0)
+    sector_support_score = Column(Float, default=0.0)
+    leader_support_score = Column(Float, default=0.0)
+    trend_health_score = Column(Float, default=0.0)
+    condition_support_score = Column(Float, default=0.0)
+    thesis_score = Column(Float, default=0.0)
+
+    health_score = Column(Float, default=0.0)
+    data_coverage_ratio = Column(Float, default=0.0)
+
+    latest_close = Column(Float, nullable=True)
+    unrealized_return_pct = Column(Float, nullable=True)
+    drawdown_20d = Column(Float, nullable=True)
+    position_pct = Column(Float, nullable=True)
+    position_size_status = Column(String(24), nullable=True)
+
+    reason_summary = Column(Text)
+    risk_warnings_json = Column(Text)
+    observation_conditions_json = Column(Text)
+    invalidation_conditions_json = Column(Text)
+    evidence_json = Column(Text)
+    current_context_json = Column(Text)
+
+    data_quality_status = Column(String(24))
+    issue_summary = Column(Text)
+    rule_version = Column(String(32), default="v1.7.2")
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("position_id", "trade_date", name="uq_position_diagnosis"),
+    )
+
+
+# ── 16. portfolio_risk_snapshot (V1.7.3) ────────────────────────────────────
+
+class PortfolioRiskSnapshot(Base):
+    """Portfolio-level risk snapshot — concentration, correlation, drawdown.
+
+    One row per (trade_date, portfolio_name, is_simulated).
+    No trading execution.
+    """
+
+    __tablename__ = "portfolio_risk_snapshot"
+
+    risk_snapshot_id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_date = Column(Date, nullable=False, index=True)
+    portfolio_name = Column(String(64), nullable=False, index=True)
+    is_simulated = Column(Boolean, nullable=False, index=True)
+
+    portfolio_risk_score = Column(Float, default=0.0)
+    portfolio_risk_level = Column(String(24), index=True)
+    portfolio_permission = Column(String(40), index=True)
+
+    position_count = Column(Integer, default=0)
+    sector_count = Column(Integer, default=0)
+    total_position_pct = Column(Float, default=0.0)
+    cash_pct = Column(Float, nullable=True)
+    max_single_position_pct = Column(Float, default=0.0)
+    max_single_position_code = Column(String(12))
+    max_sector_position_pct = Column(Float, default=0.0)
+    max_sector_name = Column(String(128))
+    top3_position_pct = Column(Float, default=0.0)
+    crowded_sector_count = Column(Integer, default=0)
+    high_correlation_pair_count = Column(Integer, default=0)
+    average_pairwise_correlation = Column(Float, nullable=True)
+    max_pairwise_correlation = Column(Float, nullable=True)
+    portfolio_drawdown_20d = Column(Float, nullable=True)
+    portfolio_drawdown_60d = Column(Float, nullable=True)
+    consecutive_loss_days = Column(Integer, default=0)
+    dangerous_position_count = Column(Integer, default=0)
+    cautious_position_count = Column(Integer, default=0)
+    unknown_position_count = Column(Integer, default=0)
+    market_state = Column(String(32))
+    sentiment_cycle = Column(String(32))
+
+    market_exposure_risk_score = Column(Float, default=0.0)
+    single_position_risk_score = Column(Float, default=0.0)
+    sector_concentration_risk_score = Column(Float, default=0.0)
+    correlation_risk_score = Column(Float, default=0.0)
+    drawdown_risk_score = Column(Float, default=0.0)
+    consecutive_loss_risk_score = Column(Float, default=0.0)
+    diagnosis_risk_score = Column(Float, default=0.0)
+    data_coverage_ratio = Column(Float, default=0.0)
+
+    risk_flags_json = Column(Text)
+    recommendations_json = Column(Text)
+    observation_conditions_json = Column(Text)
+    risk_release_conditions_json = Column(Text)
+    evidence_json = Column(Text)
+    issue_summary = Column(Text)
+    data_quality_status = Column(String(24))
+    rule_version = Column(String(32), default="v1.7.3")
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "trade_date", "portfolio_name", "is_simulated",
+            name="uq_portfolio_risk_snapshot",
+        ),
+    )
+
+
 ALL_TABLES = [
     SecurityMaster, UniverseConfig, UniverseMember,
     DataProviderConfig, DataProviderHealth, DataProviderCallLog,
     TradingCalendar, DataLoadTask, DataLoadTaskLog,
     DataCoverageReport, DataGapDetail,
     BackfillBatch, BackfillBatchSnapshot,
+    PortfolioPosition,
+    PortfolioPositionDiagnosis,
+    PortfolioRiskSnapshot,
 ]
